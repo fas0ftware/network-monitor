@@ -30,6 +30,11 @@
   </table>
 
   <script>
+        // Adres çubuğuna ?demo=1 eklenirse MAC adreslerinin sonu gizlenir (ekran görüntüsü için)
+    const DEMO = new URLSearchParams(location.search).has("demo");
+    function maskele(mac) {
+      return DEMO ? mac.slice(0, 8) + ":xx:xx:xx" : mac;
+    }
     function hucre(metin) {
       const td = document.createElement("td");
       td.textContent = metin; // textContent: veriyi HTML olarak değil düz metin olarak yazar
@@ -57,7 +62,7 @@
           tr.appendChild(durumTd);
 
           tr.appendChild(hucre(c.ip));
-          tr.appendChild(hucre(c.mac));
+          tr.appendChild(hucre(maskele(c.mac)));
           tr.appendChild(hucre(c.vendor));
           tr.appendChild(hucre(c.first_seen.replace("T", " ")));
           tr.appendChild(hucre(c.last_seen.replace("T", " ")));
