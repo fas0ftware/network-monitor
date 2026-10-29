@@ -43,3 +43,6 @@ def cihaz_kaydet(device):
             (device["mac"], device["ip"], device["vendor"], simdi, simdi),
         )
         return True
+def cihaz_sayisi():
+    with baglan() as conn:
+        return conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
