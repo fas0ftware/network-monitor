@@ -1,22 +1,29 @@
-from scapy.all import ARP, Ether, srp
+from scapy.all import ARP, Ether, srp, conf
 
 
-def scan(ip_range):
-    # Ağdaki herkese "bu IP kimde?" diye soran paket hazırla
-    packet = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip_range)
+def vendor_bul(mac):
+    # Scapy'nin içindeki üretici veritabanından MAC'e bakar
+    try:
+        ad = conf.manufdb._get_manuf(mac)
+        if ad and ad != mac:
+            return ad
+    except Exception:
+        pass
+    return "Bilinmiyor"
 
-    # Paketi gönder, 2 saniye cevap bekle
-    answered, _ = srp(packet, timeout=2, verbose=False)
+
+def scan(ip_range, deneme=3):
+    bulunan = {}
+
+    # Birkaç kez tarayıp sonuçları birleştiriyoruz, uyuyan cihazlar kaçmasın
+    for _ in range(deneme):
+        packet = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip_range)
+        answered, _ = srp(packet, timeout=4, verbose=False)
+
+        for sent, received in answered:
+            bulunan[received.psrc] = received.hwsrc
 
     devices = []
-    for sent, received in answered:
-        devices.append({"ip": received.psrc, "mac": received.hwsrc})
+    for ip, mac in bulunan.items():
+        devices.append({"ip": ip, "mac": mac, "vendor": vendor_bul(mac)})
     return devices
-
-
-if __name__ == "__main__":
-    ip_range = "192.168.1.6/24"
-    print(f"{ip_range} taranıyor...")
-
-    for device in scan(ip_range):
-        print(f"IP: {device['ip']:<16} MAC: {device['mac']}")
