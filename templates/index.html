@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ev Ağı İzleme Paneli</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #12151c; color: #e6e9ef; margin: 0; padding: 24px; }
+    h1 { margin: 0 0 4px; }
+    #ozet { color: #8b93a7; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; background: #1b202b; border-radius: 8px; overflow: hidden; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #272d3b; }
+    th { background: #222838; font-size: 13px; color: #8b93a7; text-transform: uppercase; }
+    .durum { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
+    .online { background: #12351f; color: #4ade80; }
+    .offline { background: #3a1a1a; color: #f87171; }
+  </style>
+</head>
+<body>
+  <h1>Ev Ağı İzleme Paneli</h1>
+  <div id="ozet">Yükleniyor...</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Durum</th><th>IP</th><th>MAC</th><th>Üretici</th><th>İlk görülme</th><th>Son görülme</th>
+      </tr>
+    </thead>
+    <tbody id="liste"></tbody>
+  </table>
+
+  <script>
+    function hucre(metin) {
+      const td = document.createElement("td");
+      td.textContent = metin; // textContent: veriyi HTML olarak değil düz metin olarak yazar
+      return td;
+    }
+
+    async function yukle() {
+      try {
+        const yanit = await fetch("/api/devices");
+        const cihazlar = await yanit.json();
+        const liste = document.getElementById("liste");
+        liste.innerHTML = "";
+
+        let cevrimici = 0;
+        for (const c of cihazlar) {
+          if (c.online) cevrimici++;
+
+          const tr = document.createElement("tr");
+
+          const durumTd = document.createElement("td");
+          const rozet = document.createElement("span");
+          rozet.className = "durum " + (c.online ? "online" : "offline");
+          rozet.textContent = c.online ? "Çevrimiçi" : "Çevrimdışı";
+          durumTd.appendChild(rozet);
+          tr.appendChild(durumTd);
+
+          tr.appendChild(hucre(c.ip));
+          tr.appendChild(hucre(c.mac));
+          tr.appendChild(hucre(c.vendor));
+          tr.appendChild(hucre(c.first_seen.replace("T", " ")));
+          tr.appendChild(hucre(c.last_seen.replace("T", " ")));
+          liste.appendChild(tr);
+        }
+
+        document.getElementById("ozet").textContent =
+          `${cihazlar.length} cihaz kayıtlı, ${cevrimici} tanesi çevrimiçi`;
+      } catch (hata) {
+        document.getElementById("ozet").textContent = "Veri alınamadı: " + hata;
+      }
+    }
+
+    yukle();
+    setInterval(yukle, 10000); // 10 saniyede bir yenile
+  </script>
+</body>
+</html>
