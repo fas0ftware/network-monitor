@@ -14,6 +14,11 @@
     .durum { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
     .online { background: #12351f; color: #4ade80; }
     .offline { background: #3a1a1a; color: #f87171; }
+    /* Güvenilir işaretlenmemiş cihazların satırı solda turuncu çizgiyle ayrılır */
+    tr.bilinmeyen td:first-child { border-left: 3px solid #fbbf24; }
+    input[type="text"] { background: #12151c; color: #e6e9ef; border: 1px solid #272d3b; border-radius: 6px; padding: 5px 8px; width: 150px; }
+    button { background: #2b3550; color: #e6e9ef; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    button:hover { background: #38446a; }
   </style>
 </head>
 <body>
@@ -23,14 +28,14 @@
   <table>
     <thead>
       <tr>
-        <th>Durum</th><th>IP</th><th>MAC</th><th>Üretici</th><th>İlk görülme</th><th>Son görülme</th>
+        <th>Durum</th><th>İsim</th><th>Güvenilir</th><th>IP</th><th>MAC</th><th>Üretici</th><th>İlk görülme</th><th>Son görülme</th><th></th>
       </tr>
     </thead>
     <tbody id="liste"></tbody>
   </table>
 
   <script>
-        // Adres çubuğuna ?demo=1 eklenirse MAC adreslerinin sonu gizlenir (ekran görüntüsü için)
+    // Adres çubuğuna ?demo=1 eklenirse MAC adreslerinin sonu gizlenir (ekran görüntüsü için)
     const DEMO = new URLSearchParams(location.search).has("demo");
     function maskele(mac) {
       return DEMO ? mac.slice(0, 8) + ":xx:xx:xx" : mac;
@@ -41,7 +46,27 @@
       return td;
     }
 
+    // Kullanıcı bir isim yazarken veya kutuyu değiştirirken otomatik yenileme satırı silmesin
+    let duzenleniyor = false;
+
+    async function kaydet(mac, isim, guvenilir, buton) {
+      try {
+        const yanit = await fetch("/api/devices/" + encodeURIComponent(mac), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: isim, trusted: guvenilir }),
+        });
+        if (!yanit.ok) throw new Error("HTTP " + yanit.status);
+        buton.textContent = "Kaydedildi";
+        duzenleniyor = false;
+        setTimeout(yukle, 600);
+      } catch (hata) {
+        buton.textContent = "Hata!";
+      }
+    }
+
     async function yukle() {
+      if (duzenleniyor) return;
       try {
         const yanit = await fetch("/api/devices");
         const cihazlar = await yanit.json();
@@ -49,11 +74,15 @@
         liste.innerHTML = "";
 
         let cevrimici = 0;
+        let bilinmeyen = 0;
         for (const c of cihazlar) {
           if (c.online) cevrimici++;
+          if (!c.trusted) bilinmeyen++;
 
           const tr = document.createElement("tr");
+          if (!c.trusted) tr.className = "bilinmeyen";
 
+          // Durum
           const durumTd = document.createElement("td");
           const rozet = document.createElement("span");
           rozet.className = "durum " + (c.online ? "online" : "offline");
@@ -61,16 +90,47 @@
           durumTd.appendChild(rozet);
           tr.appendChild(durumTd);
 
+          // İsim kutusu
+          const isimTd = document.createElement("td");
+          const isimKutu = document.createElement("input");
+          isimKutu.type = "text";
+          isimKutu.maxLength = 50;
+          isimKutu.placeholder = "İsim ver";
+          isimKutu.value = c.name;
+          isimKutu.addEventListener("input", () => { duzenleniyor = true; });
+          isimTd.appendChild(isimKutu);
+          tr.appendChild(isimTd);
+
+          // Güvenilir onay kutusu
+          const guvenTd = document.createElement("td");
+          const guvenKutu = document.createElement("input");
+          guvenKutu.type = "checkbox";
+          guvenKutu.checked = c.trusted;
+          guvenKutu.addEventListener("change", () => { duzenleniyor = true; });
+          guvenTd.appendChild(guvenKutu);
+          tr.appendChild(guvenTd);
+
           tr.appendChild(hucre(c.ip));
           tr.appendChild(hucre(maskele(c.mac)));
           tr.appendChild(hucre(c.vendor));
           tr.appendChild(hucre(c.first_seen.replace("T", " ")));
           tr.appendChild(hucre(c.last_seen.replace("T", " ")));
+
+          // Kaydet butonu (gerçek MAC burada kullanılır, maskelenmiş değil)
+          const butonTd = document.createElement("td");
+          const buton = document.createElement("button");
+          buton.textContent = "Kaydet";
+          buton.addEventListener("click", () =>
+            kaydet(c.mac, isimKutu.value.trim(), guvenKutu.checked, buton)
+          );
+          butonTd.appendChild(buton);
+          tr.appendChild(butonTd);
+
           liste.appendChild(tr);
         }
 
         document.getElementById("ozet").textContent =
-          `${cihazlar.length} cihaz kayıtlı, ${cevrimici} tanesi çevrimiçi`;
+          `${cihazlar.length} cihaz kayıtlı, ${cevrimici} tanesi çevrimiçi, ${bilinmeyen} tanesi henüz güvenilir işaretlenmedi`;
       } catch (hata) {
         document.getElementById("ozet").textContent = "Veri alınamadı: " + hata;
       }

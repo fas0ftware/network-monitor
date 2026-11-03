@@ -1,29 +1,29 @@
 from scapy.all import ARP, Ether, srp, conf
 
 
-def vendor_bul(mac):
+def find_vendor(mac):
     # Scapy'nin içindeki üretici veritabanından MAC'e bakar
     try:
-        ad = conf.manufdb._get_manuf(mac)
-        if ad and ad != mac:
-            return ad
+        name = conf.manufdb._get_manuf(mac)
+        if name and name != mac:
+            return name
     except Exception:
         pass
     return "Bilinmiyor"
 
 
-def scan(ip_range, deneme=3):
-    bulunan = {}
+def scan(ip_range, retries=3):
+    found = {}
 
     # Birkaç kez tarayıp sonuçları birleştiriyoruz, uyuyan cihazlar kaçmasın
-    for _ in range(deneme):
+    for _ in range(retries):
         packet = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip_range)
-        answered, _ = srp(packet, timeout=4, verbose=False)
+        answered, _unanswered = srp(packet, timeout=4, verbose=False)
 
-        for sent, received in answered:
-            bulunan[received.psrc] = received.hwsrc
+        for _sent, received in answered:
+            found[received.psrc] = received.hwsrc
 
     devices = []
-    for ip, mac in bulunan.items():
-        devices.append({"ip": ip, "mac": mac, "vendor": vendor_bul(mac)})
+    for ip, mac in found.items():
+        devices.append({"ip": ip, "mac": mac, "vendor": find_vendor(mac)})
     return devices

@@ -2,24 +2,24 @@ import os
 import subprocess
 
 
-def bildirim_gonder(baslik, mesaj):
+def send_notification(title, message):
     # Her durumda terminale yaz (\a bip sesi çıkarır)
-    print(f"\a[UYARI] {baslik}: {mesaj}")
+    print(f"\a[ALERT] {title}: {message}")
 
     # Masaüstü bildirimi
-    kullanici = os.environ.get("SUDO_USER")
+    sudo_user = os.environ.get("SUDO_USER")
     try:
-        if os.geteuid() == 0 and kullanici:
+        if os.geteuid() == 0 and sudo_user:
             # Script sudo ile çalışıyor, bildirimi senin oturumuna göndermeliyiz
-            uid = subprocess.check_output(["id", "-u", kullanici], text=True).strip()
-            komut = [
-                "sudo", "-u", kullanici, "env",
+            uid = subprocess.check_output(["id", "-u", sudo_user], text=True).strip()
+            command = [
+                "sudo", "-u", sudo_user, "env",
                 f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
-                "notify-send", baslik, mesaj,
+                "notify-send", title, message,
             ]
         else:
-            komut = ["notify-send", baslik, mesaj]
+            command = ["notify-send", title, message]
 
-        subprocess.run(komut, check=False, timeout=5)
-    except Exception as hata:
-        print(f"(Masaüstü bildirimi gönderilemedi: {hata})")
+        subprocess.run(command, check=False, timeout=5)
+    except Exception as error:
+        print(f"(Desktop notification could not be sent: {error})")
