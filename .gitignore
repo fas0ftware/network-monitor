@@ -2,3 +2,6 @@ __pycache__/
 *.db
 .env
 venv/
+tests/
+.pytest_cache/
+requirements-dev.txt
