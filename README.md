@@ -189,6 +189,3 @@ Replace `192.168.1.X` with the device's IP. It will be detected as new.
 
 Python · Scapy · SQLite · Flask · JavaScript · HTML/CSS
 
-## License
-
-MIT – see `LICENSE` (add the file if you want to publish under this license).
