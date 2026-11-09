@@ -1,14 +1,18 @@
+import argparse
+import os
+import sys
 import time
 
 from alert import send_notification
+from config import (
+    DEFAULT_IP_RANGE,
+    PORT_RESCAN_INTERVAL,
+    SCAN_INTERVAL,
+    normalize_ip_range,
+)
 from db import count_devices, create_tables, save_device, save_ports
-from portscan import scan_ports
+from portscan import RISKY_PORTS, scan_ports
 from scanner import scan
-
-IP_RANGE = "192.168.1.6/24"
-SCAN_INTERVAL = 60  # iki tarama arası saniye
-PORT_RESCAN_INTERVAL = 30 * 60  # aynı cihazın portları en fazla bu sıklıkla taranır
-RISKY_PORTS = {21, 23, 445, 3389, 5900}  # FTP, Telnet, SMB, RDP, VNC
 
 # MAC -> en son port taramasının zamanı (program çalıştığı sürece tutulur)
 last_port_scan = {}
@@ -34,8 +38,8 @@ def scan_device_ports(device, silent):
         send_notification("Ağda yeni açık port!", text)
 
 
-def run_round(silent):
-    for device in scan(IP_RANGE):
+def run_round(ip_range, silent):
+    for device in scan(ip_range):
         is_new = save_device(device)
         if is_new:
             print(f"  YENİ: {device['ip']:<16} {device['mac']:<19} {device['vendor']}")
@@ -51,19 +55,60 @@ def run_round(silent):
             scan_device_ports(device, silent)
 
 
-if __name__ == "__main__":
+def build_parser():
+    parser = argparse.ArgumentParser(description="Ev ağı izleyici: ARP + port taraması.")
+    parser.add_argument(
+        "-r", "--range",
+        default=os.environ.get("NETMON_IP_RANGE", DEFAULT_IP_RANGE),
+        help=f"taranacak alt ağ (varsayılan: {DEFAULT_IP_RANGE}, ya da NETMON_IP_RANGE)",
+    )
+    parser.add_argument(
+        "-i", "--interval", type=int, default=SCAN_INTERVAL,
+        help=f"iki tarama arası saniye (varsayılan: {SCAN_INTERVAL})",
+    )
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+
+    try:
+        ip_range = normalize_ip_range(args.range)
+    except ValueError as error:
+        print(f"Hata: {error}", file=sys.stderr)
+        return 2
+    if args.interval < 5:
+        print("Hata: tarama aralığı en az 5 saniye olmalı.", file=sys.stderr)
+        return 2
+
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        print(
+            "Hata: ARP taraması root yetkisi ister. Şöyle çalıştır:\n"
+            "  sudo venv/bin/python main.py",
+            file=sys.stderr,
+        )
+        return 1
+
     create_tables()
     first_run = count_devices() == 0
 
     if first_run:
         print("Veritabanı boş: ilk tur sessiz, cihazlar 'bilinen' olarak kaydedilecek.")
-    print(f"{IP_RANGE} her {SCAN_INTERVAL} saniyede bir taranacak. Durdurmak için Ctrl+C.")
+    print(f"{ip_range} her {args.interval} saniyede bir taranacak. Durdurmak için Ctrl+C.")
 
     try:
         while True:
             print(f"[{time.strftime('%H:%M:%S')}] taranıyor...")
-            run_round(silent=first_run)
-            first_run = False
-            time.sleep(SCAN_INTERVAL)
+            try:
+                run_round(ip_range, silent=first_run)
+                first_run = False
+            except Exception as error:  # geçici ağ hatası programı kapatmasın
+                print(f"  Tarama başarısız, sonraki turda tekrar denenecek: {error}")
+            time.sleep(args.interval)
     except KeyboardInterrupt:
         print("\nDurduruldu.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

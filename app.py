@@ -1,13 +1,17 @@
+import re
 from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, render_template, request
 
 from db import get_all_ports, get_connection, update_device
+from portscan import RISKY_PORTS
 
 app = Flask(__name__)
 
 # Tarama 60 saniyede bir yapılıyor, 3 dakikadır görünmeyen cihaz çevrimdışı sayılır
 ONLINE_TIMEOUT = timedelta(minutes=3)
+
+MAC_PATTERN = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 
 
 def get_devices():
@@ -22,6 +26,10 @@ def get_devices():
     result = []
     for mac, ip, vendor, first, last, name, trusted in rows:
         online = now - datetime.fromisoformat(last) <= ONLINE_TIMEOUT
+        ports = [
+            {**entry, "risky": entry["port"] in RISKY_PORTS}
+            for entry in all_ports.get(mac, [])
+        ]
         result.append({
             "mac": mac,
             "ip": ip,
@@ -31,7 +39,7 @@ def get_devices():
             "online": online,
             "name": name or "",
             "trusted": bool(trusted),
-            "ports": all_ports.get(mac, []),
+            "ports": ports,
         })
     return result
 
@@ -48,10 +56,21 @@ def api_devices():
 
 @app.route("/api/devices/<mac>", methods=["POST"])
 def api_update_device(mac):
-    data = request.get_json(silent=True) or {}
-    name = str(data.get("name", "")).strip()[:50]
-    trusted = bool(data.get("trusted", False))
-    update_device(mac, name, trusted)
+    mac = mac.lower()
+    if not MAC_PATTERN.match(mac):
+        return jsonify({"ok": False, "error": "invalid MAC address"}), 400
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "JSON body required"}), 400
+
+    name = data.get("name", "")
+    trusted = data.get("trusted", False)
+    if not isinstance(name, str) or not isinstance(trusted, bool):
+        return jsonify({"ok": False, "error": "name must be text, trusted true or false"}), 400
+
+    if not update_device(mac, name.strip()[:50], trusted):
+        return jsonify({"ok": False, "error": "unknown device"}), 404
     return jsonify({"ok": True})
 
 

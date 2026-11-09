@@ -1,15 +1,33 @@
+import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 
-DB_NAME = "devices.db"
+DB_NAME = os.environ.get("NETMON_DB", "devices.db")
 
 
+@contextmanager
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    """Open the database, commit on success, roll back on error, always close.
+
+    (sqlite3's own `with` only commits; it never closes the connection.)
+    """
+    conn = sqlite3.connect(DB_NAME, timeout=10)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def create_tables():
     with get_connection() as conn:
+        # WAL: tarayıcı yazarken panel aynı anda okuyabilsin
+        conn.execute("PRAGMA journal_mode=WAL")
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS devices (
                 mac        TEXT PRIMARY KEY,
@@ -65,11 +83,13 @@ def save_device(device):
 
 
 def update_device(mac, name, trusted):
+    """İsim ve güven bilgisini kaydeder. Cihaz yoksa False döner."""
     with get_connection() as conn:
-        conn.execute(
+        cursor = conn.execute(
             "UPDATE devices SET name = ?, trusted = ? WHERE mac = ?",
             (name, 1 if trusted else 0, mac),
         )
+        return cursor.rowcount > 0
 
 
 def count_devices():

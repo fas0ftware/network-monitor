@@ -19,6 +19,9 @@
     input[type="text"] { background: #12151c; color: #e6e9ef; border: 1px solid #272d3b; border-radius: 6px; padding: 5px 8px; width: 150px; }
     button { background: #2b3550; color: #e6e9ef; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
     button:hover { background: #38446a; }
+    /* Açık portlar: riskli servisler (FTP, Telnet, SMB, RDP, VNC) kırmızı */
+    .port { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #222838; color: #c3c9d8; }
+    .port.riskli { background: #3a1a1a; color: #f87171; }
   </style>
 </head>
 <body>
@@ -28,7 +31,7 @@
   <table>
     <thead>
       <tr>
-        <th>Durum</th><th>İsim</th><th>Güvenilir</th><th>IP</th><th>MAC</th><th>Üretici</th><th>İlk görülme</th><th>Son görülme</th><th></th>
+        <th>Durum</th><th>İsim</th><th>Güvenilir</th><th>IP</th><th>MAC</th><th>Üretici</th><th>Açık portlar</th><th>İlk görülme</th><th>Son görülme</th><th></th>
       </tr>
     </thead>
     <tbody id="liste"></tbody>
@@ -113,6 +116,20 @@
           tr.appendChild(hucre(c.ip));
           tr.appendChild(hucre(maskele(c.mac)));
           tr.appendChild(hucre(c.vendor));
+
+          // Açık portlar (textContent ile yazılır, riskli olanlar kırmızı)
+          const portTd = document.createElement("td");
+          if (c.ports.length === 0) {
+            portTd.textContent = "-";
+          }
+          for (const p of c.ports) {
+            const etiket = document.createElement("span");
+            etiket.className = "port" + (p.risky ? " riskli" : "");
+            etiket.textContent = p.port + "/" + p.service;
+            portTd.appendChild(etiket);
+          }
+          tr.appendChild(portTd);
+
           tr.appendChild(hucre(c.first_seen.replace("T", " ")));
           tr.appendChild(hucre(c.last_seen.replace("T", " ")));
 

@@ -7,6 +7,9 @@ COMMON_PORTS = [
     3389, 5000, 5353, 5900, 8000, 8080, 8443, 9100, 62078,
 ]
 
+# Riskli sayılan servisler: FTP, Telnet, SMB, RDP, VNC (uyarılarda ve panelde işaretlenir)
+RISKY_PORTS = {21, 23, 445, 3389, 5900}
+
 
 def is_port_open(ip, port, timeout=0.5):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:

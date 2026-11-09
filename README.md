@@ -25,9 +25,12 @@ Most people have no idea what is connected to their home Wi-Fi. This tool answer
 - **New-port alerts** – when a device opens a port that was not open before, you get an alert. Risky services (FTP, Telnet, SMB, RDP, VNC) are flagged as `riskli!`. Closed ports are removed from the database.
 - **Device naming and trust** – give each device a friendly name and mark it as trusted from the dashboard. Untrusted devices are highlighted with an orange bar.
 - **Continuous monitoring** – rescans on a fixed interval (default: 60 seconds).
-- **Web dashboard** – live table with online/offline status, auto-refreshing every 10 seconds. Auto-refresh pauses while you are editing a row.
+- **Web dashboard** – live table with online/offline status and open ports (risky ones in red), auto-refreshing every 10 seconds. Auto-refresh pauses while you are editing a row.
 - **Demo mode** – open the dashboard with `?demo=1` to mask the last half of MAC addresses (handy for screenshots).
+- **Command-line options** – choose the subnet and scan interval when you start the scanner, no code editing needed.
+- **Robust storage** – SQLite runs in WAL mode so the dashboard can read while the scanner writes, connections are always closed, and a failed write is rolled back.
 - **Automatic database migration** – older databases get the new `name` / `trusted` columns and `ports` table added on startup.
+- **Tested** – automated tests cover the database, the API, the port scanner and input validation (no root or network needed).
 
 ## How it works
 
@@ -58,13 +61,17 @@ Port alerts need a baseline: the first port scan of a device in each run of `mai
 ```
 network-monitor/
 ├── scanner.py            # ARP scan + MAC vendor lookup
-├── portscan.py           # Threaded TCP port scan of common ports
+├── portscan.py           # Threaded TCP port scan of common ports, risky port list
 ├── db.py                 # SQLite storage, migrations, new-device / new-port detection
 ├── alert.py              # Terminal and desktop notifications
-├── main.py               # Continuous scan loop
+├── config.py             # Default settings and subnet validation
+├── main.py               # Continuous scan loop (command-line entry point)
 ├── app.py                # Flask web server and JSON API
 ├── templates/
 │   └── index.html        # Dashboard page
+├── tests/                # Automated tests (unittest)
+├── .github/workflows/
+│   └── tests.yml         # Runs the tests on every push
 ├── docs/
 │   └── dashboard.png
 ├── requirements.txt
@@ -74,7 +81,7 @@ network-monitor/
 ## Requirements
 
 - Linux
-- Python 3.8+
+- Python 3.10+
 - Root privileges (Scapy needs them to send raw ARP packets)
 - `notify-send` for desktop notifications (optional)
 
@@ -106,20 +113,31 @@ sudo pacman -S libnotify
 
 Find your subnet with `ip -4 -brief a`. An address like `192.168.1.23/24` means your range is `192.168.1.0/24`.
 
-Open `main.py` and adjust:
+Pass your subnet on the command line, or set it once with an environment variable:
 
-```python
-IP_RANGE = "192.168.1.0/24"           # your subnet
-SCAN_INTERVAL = 60                    # seconds between network scans
-PORT_RESCAN_INTERVAL = 30 * 60        # minimum seconds between port scans of the same device
-RISKY_PORTS = {21, 23, 445, 3389, 5900}  # ports flagged as risky in alerts
+```bash
+sudo venv/bin/python main.py --range 192.168.0.0/24 --interval 60
+# or
+export NETMON_IP_RANGE=192.168.0.0/24
 ```
 
-The list of ports that are checked is `COMMON_PORTS` in `portscan.py`.
+The range is validated: a host address such as `192.168.1.6/24` is turned into `192.168.1.0/24`, and IPv6 or very large networks (bigger than `/20`) are refused.
+
+Other settings live in the code:
+
+| Setting | File | Default |
+| ------- | ---- | ------- |
+| `DEFAULT_IP_RANGE` | `config.py` | `192.168.1.0/24` |
+| `SCAN_INTERVAL` (seconds between network scans) | `config.py` | `60` |
+| `PORT_RESCAN_INTERVAL` (minimum seconds between port scans of one device) | `config.py` | `30 * 60` |
+| `RISKY_PORTS` (flagged in alerts and shown in red) | `portscan.py` | `{21, 23, 445, 3389, 5900}` |
+| `COMMON_PORTS` (ports that are checked) | `portscan.py` | 19 common ports |
+
+The database file is `devices.db` in the folder you start the program from; set `NETMON_DB` to use another path (both `main.py` and `app.py` read it).
 
 ## Usage
 
-Run the scanner (needs root, so call the virtual environment's Python explicitly):
+Run the scanner (needs root, so call the virtual environment's Python explicitly; without root it stops with a clear message):
 
 ```bash
 sudo venv/bin/python main.py
@@ -142,8 +160,18 @@ On the first run the database is empty, so the first scan is silent and register
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
-| `GET`  | `/api/devices` | All devices with `mac`, `ip`, `vendor`, `first_seen`, `last_seen`, `online`, `name`, `trusted` and open `ports` |
+| `GET`  | `/api/devices` | All devices with `mac`, `ip`, `vendor`, `first_seen`, `last_seen`, `online`, `name`, `trusted` and open `ports` (each with `port`, `service` and `risky`) |
 | `POST` | `/api/devices/<mac>` | Body `{"name": "Laptop", "trusted": true}` – sets the name (trimmed, max 50 chars) and trust flag |
+
+The `POST` endpoint answers `400` for a malformed MAC address, a body that is not JSON, or values of the wrong type (`trusted` must be `true` or `false`, not a string), and `404` for a device that is not in the database.
+
+### Running the tests
+
+```bash
+python -m unittest discover -v
+```
+
+The tests use a temporary database and local sockets only. They need neither root nor Scapy. The same command runs on every push through GitHub Actions.
 
 ### Testing the alert manually
 
@@ -162,15 +190,16 @@ Replace `192.168.1.X` with the device's IP. It will be detected as new.
 - The dashboard binds to `127.0.0.1`, so it is only reachable from the machine running it, not from other devices on the network.
 - SQL queries are parameterized (`?` placeholders), which prevents SQL injection.
 - The dashboard writes data into the page with `textContent` instead of `innerHTML`, so a malicious device name cannot inject script into the page.
-- Device names are trimmed and limited to 50 characters on the server.
-- `devices.db` and `.env` are listed in `.gitignore`, so your device inventory and future secrets are never committed.
+- Device names are trimmed and limited to 50 characters on the server, and the API checks the type of every field.
+- The update endpoint only accepts `application/json`, so a web page you happen to visit cannot change device names or trust flags in the background.
+- `devices.db` (including its `-wal` / `-shm` files) and `.env` are listed in `.gitignore`, so your device inventory and future secrets are never committed.
 
 ## Known limitations
 
 - **Randomized MAC addresses.** Modern phones use a different private MAC per network, so their vendor shows as "Bilinmiyor" (unknown). The same phone may also appear as a new device if it rotates its address.
 - **Sleeping devices.** Some phones and TVs ignore ARP requests in power-saving mode, so they can briefly appear offline.
 - **Client isolation.** If your router has AP/client isolation enabled, devices cannot see each other and the scan will find little.
-- **Port scan scope.** Only a fixed list of common TCP ports is checked; UDP is not scanned. Open ports are returned by the API but not yet shown in the dashboard table.
+- **Port scan scope.** Only a fixed list of common TCP ports is checked; UDP is not scanned.
 - **Trust does not silence alerts yet.** New-device alerts fire for every unknown MAC; the trusted flag is currently informational.
 - **Linux only.** The notification code relies on `notify-send` and `/run/user/<uid>/bus`.
 
@@ -178,7 +207,8 @@ Replace `192.168.1.X` with the device's IP. It will be detected as new.
 
 - [x] Name devices and mark them as trusted
 - [x] Port scanning for basic exposure checks
-- [ ] Show open ports in the dashboard
+- [x] Show open ports in the dashboard
+- [x] Automated tests and CI
 - [ ] Use the trusted flag to filter alerts
 - [ ] Telegram notifications (token stored in `.env`)
 - [ ] Better handling of randomized MAC addresses
