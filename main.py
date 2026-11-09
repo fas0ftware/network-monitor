@@ -1,5 +1,6 @@
 import time
 
+from advisor import is_risky
 from alert import send_notification
 from db import count_devices, create_tables, save_device, save_ports
 from portscan import scan_ports
@@ -8,7 +9,6 @@ from scanner import scan
 IP_RANGE = "192.168.1.6/24"
 SCAN_INTERVAL = 60  # iki tarama arası saniye
 PORT_RESCAN_INTERVAL = 30 * 60  # aynı cihazın portları en fazla bu sıklıkla taranır
-RISKY_PORTS = {21, 23, 445, 3389, 5900}  # FTP, Telnet, SMB, RDP, VNC
 
 # MAC -> en son port taramasının zamanı (program çalıştığı sürece tutulur)
 last_port_scan = {}
@@ -28,7 +28,8 @@ def scan_device_ports(device, silent):
 
     services = dict(open_ports)
     for port in new_ports:
-        risky = " (riskli!)" if port in RISKY_PORTS else ""
+        # Riskli sayılan portlar advisor.py'deki risk seviyesine göre belirlenir (yüksek ve kritik)
+        risky = " (riskli! panelde porta tıkla, nasıl kapatacağın yazıyor)" if is_risky(port) else ""
         text = f"{device['ip']} cihazında yeni açık port: {port}/{services[port]}{risky}"
         print(f"  YENİ PORT: {text}")
         send_notification("Ağda yeni açık port!", text)

@@ -1,10 +1,12 @@
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
-# Ev ağında işe yarayan yaygın portlar; 65535 portun hepsini taramak gereksiz ve yavaş
+# Ev ağında işe yarayan yaygın portlar; 65535 portun hepsini taramak gereksiz ve yavaş.
+# Her portun açıklaması ve kapatma rehberi advisor.py içinde.
 COMMON_PORTS = [
-    21, 22, 23, 53, 80, 139, 443, 445, 554, 1883,
-    3389, 5000, 5353, 5900, 8000, 8080, 8443, 9100, 62078,
+    21, 22, 23, 53, 80, 111, 139, 443, 445, 554, 631, 1883,
+    2049, 2323, 2375, 3306, 3389, 5000, 5353, 5432, 5555, 5900,
+    6379, 8000, 8080, 8443, 9100, 27017, 62078,
 ]
 
 

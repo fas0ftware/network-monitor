@@ -3,141 +3,707 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ev Ağı İzleme Paneli</title>
+  <title>Ev Ağı Güvenlik Paneli</title>
   <style>
-    body { font-family: system-ui, sans-serif; background: #12151c; color: #e6e9ef; margin: 0; padding: 24px; }
+    :root {
+      --bg: #12151c; --panel: #1b202b; --panel-2: #222838; --line: #272d3b;
+      --text: #e6e9ef; --muted: #8b93a7; --accent: #6ea8fe;
+      --critical: #f87171; --critical-bg: #3a1a1a;
+      --high: #fb923c;     --high-bg: #3a2512;
+      --medium: #fbbf24;   --medium-bg: #33290f;
+      --low: #60a5fa;      --low-bg: #14263f;
+      --info: #9aa3b8;     --info-bg: #222838;
+      --none: #4ade80;     --none-bg: #12351f;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; line-height: 1.5; }
+    body.drawer-open { overflow: hidden; }
     h1 { margin: 0 0 4px; }
-    #ozet { color: #8b93a7; margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; background: #1b202b; border-radius: 8px; overflow: hidden; }
-    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #272d3b; }
-    th { background: #222838; font-size: 13px; color: #8b93a7; text-transform: uppercase; }
-    .durum { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
-    .online { background: #12351f; color: #4ade80; }
-    .offline { background: #3a1a1a; color: #f87171; }
-    /* Güvenilir işaretlenmemiş cihazların satırı solda turuncu çizgiyle ayrılır */
-    tr.bilinmeyen td:first-child { border-left: 3px solid #fbbf24; }
-    input[type="text"] { background: #12151c; color: #e6e9ef; border: 1px solid #272d3b; border-radius: 6px; padding: 5px 8px; width: 150px; }
-    button { background: #2b3550; color: #e6e9ef; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    .subtitle { color: var(--muted); margin-bottom: 16px; }
+    button { background: #2b3550; color: var(--text); border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
     button:hover { background: #38446a; }
+    button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:disabled { opacity: 0.6; cursor: default; }
+
+    /* Sekmeler */
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+    .tab { background: transparent; border-radius: 6px 6px 0 0; padding: 10px 18px; color: var(--muted); }
+    .tab[aria-selected="true"] { background: var(--panel); color: var(--text); border-bottom: 2px solid var(--accent); }
+
+    /* Özet kartları */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    .card { background: var(--panel); border-radius: 10px; padding: 16px; }
+    .card-title { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+    .score-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .score-num { font-size: 44px; font-weight: 700; line-height: 1; }
+    .score-max { color: var(--muted); }
+    .meter { height: 8px; background: var(--panel-2); border-radius: 4px; margin: 12px 0; overflow: hidden; }
+    .meter-fill { height: 100%; border-radius: 4px; }
+    .fill-good { background: var(--none); } .fill-ok { background: var(--low); }
+    .fill-warn { background: var(--medium); } .fill-bad { background: var(--critical); }
+    .count-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    .card details { color: var(--muted); font-size: 13px; }
+    .card summary { cursor: pointer; }
+    .action-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .action-btn { width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--panel-2); padding: 9px 12px; }
+    .muted { color: var(--muted); }
+    #summary-line { color: var(--muted); margin-bottom: 12px; }
+
+    /* Rozetler ve port çipleri */
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
+    .risk-critical { background: var(--critical-bg); color: var(--critical); }
+    .risk-high { background: var(--high-bg); color: var(--high); }
+    .risk-medium { background: var(--medium-bg); color: var(--medium); }
+    .risk-low { background: var(--low-bg); color: var(--low); }
+    .risk-info { background: var(--info-bg); color: var(--info); }
+    .risk-none { background: var(--none-bg); color: var(--none); }
+    .online { background: var(--none-bg); color: var(--none); }
+    .offline { background: var(--critical-bg); color: var(--critical); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 150px; }
+    .chip { border-radius: 14px; padding: 3px 11px; font-size: 13px; border: 1px solid transparent; }
+    .chip.risk-critical:hover { background: #4d2222; } .chip.risk-high:hover { background: #4d3216; }
+    .chip.risk-medium:hover { background: #443716; } .chip.risk-low:hover { background: #1b3557; }
+    .chip.risk-info:hover { background: #2d3448; }
+    .chip.accepted { opacity: 0.6; border-color: var(--line); }
+
+    /* Cihaz tablosu */
+    .table-wrap { overflow-x: auto; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); min-width: 980px; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { background: var(--panel-2); font-size: 13px; color: var(--muted); text-transform: uppercase; }
+    /* Güvenilir işaretlenmemiş cihazların satırı solda turuncu çizgiyle ayrılır */
+    tr.unknown td:first-child { border-left: 3px solid var(--medium); }
+    input[type="text"] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 150px; }
+
+    /* Yan panel */
+    #overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); z-index: 10; }
+    #drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw); background: var(--panel); z-index: 11; overflow-y: auto; padding: 22px; box-shadow: -8px 0 30px rgba(0, 0, 0, 0.5); }
+    .drawer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+    .drawer-head h2 { margin: 0; font-size: 22px; }
+    .drawer-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+    #drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 20px 0 6px; }
+    #drawer p { margin: 6px 0; }
+    .fix-group { background: var(--panel-2); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+    .fix-group summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+    .code-row { display: flex; gap: 8px; align-items: stretch; margin: 6px 0; }
+    .code-row code { flex: 1; background: #0c0f15; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; overflow-x: auto; white-space: pre; }
+    .code-row button { padding: 4px 10px; font-size: 12px; flex-shrink: 0; }
+    .accept-box { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .accept-box p { color: var(--muted); font-size: 14px; }
+
+    /* Ağını Savun sekmesi */
+    .guide-intro { max-width: 760px; margin-bottom: 16px; color: var(--muted); }
+    .progress-line { display: flex; align-items: center; gap: 12px; max-width: 760px; margin-bottom: 20px; }
+    .progress-line .meter { flex: 1; margin: 0; }
+    .group { max-width: 760px; margin-bottom: 18px; }
+    .group h2 { font-size: 18px; margin: 0 0 8px; }
+    .check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .check-item { background: var(--panel); border-radius: 8px; padding: 10px 14px; }
+    .check-item label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-weight: 600; }
+    .check-item input { margin-top: 5px; }
+    .check-item.done label span { color: var(--muted); text-decoration: line-through; }
+    .check-item details { margin: 4px 0 0 26px; color: var(--muted); font-size: 14px; }
+    .check-item summary { cursor: pointer; }
+    .playbook { max-width: 760px; background: var(--panel); border-radius: 10px; padding: 14px 18px; margin-top: 24px; }
+    .playbook h2 { margin: 0 0 4px; font-size: 18px; }
+    .playbook ol { padding-left: 22px; }
+    .playbook li { margin: 10px 0; }
+    .playbook li strong { display: block; }
+    .playbook li span { color: var(--muted); font-size: 14px; }
+    footer { color: var(--muted); font-size: 13px; margin-top: 28px; max-width: 760px; }
   </style>
 </head>
 <body>
-  <h1>Ev Ağı İzleme Paneli</h1>
-  <div id="ozet">Yükleniyor...</div>
+  <h1>Ev Ağı Güvenlik Paneli</h1>
+  <div class="subtitle">Ağındaki cihazları ve açık portları gör, her riskin nasıl kapatılacağını öğren.</div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Durum</th><th>İsim</th><th>Güvenilir</th><th>IP</th><th>MAC</th><th>Üretici</th><th>İlk görülme</th><th>Son görülme</th><th></th>
-      </tr>
-    </thead>
-    <tbody id="liste"></tbody>
-  </table>
+  <div class="tabs" role="tablist" aria-label="Bölümler">
+    <button class="tab" role="tab" id="tab-devices" aria-controls="panel-devices" aria-selected="true" data-tab="devices">Cihazlar</button>
+    <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" tabindex="-1" data-tab="guide">Ağını Savun</button>
+  </div>
 
-  <script>
+  <section id="panel-devices" role="tabpanel" aria-labelledby="tab-devices">
+    <div id="cards" class="cards"></div>
+    <div id="summary-line">Yükleniyor...</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Durum</th><th>İsim</th><th>Güvenilir</th><th>IP</th><th>MAC</th><th>Üretici</th><th>Risk</th><th>Açık portlar</th><th>İlk görülme</th><th>Son görülme</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="device-list"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+    <p class="guide-intro">Ağını adım adım sağlamlaştırmak için bu listeyi kullan. Belirli bir portun nasıl kapatılacağını görmek için Cihazlar sekmesinde port çiplerine tıkla. İlerlemen bu tarayıcıda saklanır.</p>
+    <div id="guide-content">Yükleniyor...</div>
+  </section>
+
+  <footer>Sadece kendi ağını ve izin aldığın ağları tara. Başkasının ağını taramak, port taraması dahil, yasalara aykırı olabilir.</footer>
+
+  <div id="overlay" hidden></div>
+  <aside id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+    <div class="drawer-head">
+      <h2 id="drawer-title"></h2>
+      <button id="drawer-close" aria-label="Kapat">Kapat</button>
+    </div>
+    <div id="drawer-body"></div>
+  </aside>
+
+  <script nonce="{{ nonce }}">
+    "use strict";
+
     // Adres çubuğuna ?demo=1 eklenirse MAC adreslerinin sonu gizlenir (ekran görüntüsü için)
     const DEMO = new URLSearchParams(location.search).has("demo");
-    function maskele(mac) {
+    const RISK_LABELS = { critical: "Kritik", high: "Yüksek", medium: "Orta", low: "Düşük", info: "Bilgi", none: "Temiz" };
+    const CHECKLIST_KEY = "netmon-checklist-v1";
+
+    const state = {
+      devices: [],
+      summary: null,
+      fingerprint: "",
+      editing: false,       // isim yazılırken otomatik yenileme satırı silmesin
+      drawer: null,         // { device, port, advice }
+      adviceCache: new Map(),
+      guide: null,
+      lastFocus: null,
+    };
+
+    // ---------- Yardımcılar ----------
+    // Veriyi her zaman textContent ile yazıyoruz; innerHTML kullanmıyoruz (script enjeksiyonunu önler)
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function maskMac(mac) {
       return DEMO ? mac.slice(0, 8) + ":xx:xx:xx" : mac;
     }
-    function hucre(metin) {
-      const td = document.createElement("td");
-      td.textContent = metin; // textContent: veriyi HTML olarak değil düz metin olarak yazar
-      return td;
+
+    function makeCell(text) {
+      return el("td", "", text);
     }
 
-    // Kullanıcı bir isim yazarken veya kutuyu değiştirirken otomatik yenileme satırı silmesin
-    let duzenleniyor = false;
+    function riskBadge(risk) {
+      return el("span", "badge risk-" + risk, RISK_LABELS[risk] || risk);
+    }
 
-    async function kaydet(mac, isim, guvenilir, buton) {
+    function deviceLabel(device) {
+      return device.name || device.ip;
+    }
+
+    function fillPlaceholders(text, device, port) {
+      const parts = device.ip.split(".");
+      const subnet = parts.length === 4 ? parts.slice(0, 3).join(".") + ".0/24" : device.ip;
+      return text
+        .replaceAll("{ip}", device.ip)
+        .replaceAll("{port}", String(port))
+        .replaceAll("{subnet}", subnet);
+    }
+
+    function scoreClass(score) {
+      if (score >= 90) return "good";
+      if (score >= 70) return "ok";
+      if (score >= 50) return "warn";
+      return "bad";
+    }
+
+    // ---------- Cihazlar sekmesi ----------
+    async function saveDevice(mac, name, trusted, button) {
       try {
-        const yanit = await fetch("/api/devices/" + encodeURIComponent(mac), {
+        const response = await fetch("/api/devices/" + encodeURIComponent(mac), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: isim, trusted: guvenilir }),
+          body: JSON.stringify({ name: name, trusted: trusted }),
         });
-        if (!yanit.ok) throw new Error("HTTP " + yanit.status);
-        buton.textContent = "Kaydedildi";
-        duzenleniyor = false;
-        setTimeout(yukle, 600);
-      } catch (hata) {
-        buton.textContent = "Hata!";
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        button.textContent = "Kaydedildi";
+        state.editing = false;
+        setTimeout(() => loadData(true), 600);
+      } catch (error) {
+        button.textContent = "Hata!";
       }
     }
 
-    async function yukle() {
-      if (duzenleniyor) return;
+    async function loadData(force) {
+      if (state.editing && !force) return;
       try {
-        const yanit = await fetch("/api/devices");
-        const cihazlar = await yanit.json();
-        const liste = document.getElementById("liste");
-        liste.innerHTML = "";
-
-        let cevrimici = 0;
-        let bilinmeyen = 0;
-        for (const c of cihazlar) {
-          if (c.online) cevrimici++;
-          if (!c.trusted) bilinmeyen++;
-
-          const tr = document.createElement("tr");
-          if (!c.trusted) tr.className = "bilinmeyen";
-
-          // Durum
-          const durumTd = document.createElement("td");
-          const rozet = document.createElement("span");
-          rozet.className = "durum " + (c.online ? "online" : "offline");
-          rozet.textContent = c.online ? "Çevrimiçi" : "Çevrimdışı";
-          durumTd.appendChild(rozet);
-          tr.appendChild(durumTd);
-
-          // İsim kutusu
-          const isimTd = document.createElement("td");
-          const isimKutu = document.createElement("input");
-          isimKutu.type = "text";
-          isimKutu.maxLength = 50;
-          isimKutu.placeholder = "İsim ver";
-          isimKutu.value = c.name;
-          isimKutu.addEventListener("input", () => { duzenleniyor = true; });
-          isimTd.appendChild(isimKutu);
-          tr.appendChild(isimTd);
-
-          // Güvenilir onay kutusu
-          const guvenTd = document.createElement("td");
-          const guvenKutu = document.createElement("input");
-          guvenKutu.type = "checkbox";
-          guvenKutu.checked = c.trusted;
-          guvenKutu.addEventListener("change", () => { duzenleniyor = true; });
-          guvenTd.appendChild(guvenKutu);
-          tr.appendChild(guvenTd);
-
-          tr.appendChild(hucre(c.ip));
-          tr.appendChild(hucre(maskele(c.mac)));
-          tr.appendChild(hucre(c.vendor));
-          tr.appendChild(hucre(c.first_seen.replace("T", " ")));
-          tr.appendChild(hucre(c.last_seen.replace("T", " ")));
-
-          // Kaydet butonu (gerçek MAC burada kullanılır, maskelenmiş değil)
-          const butonTd = document.createElement("td");
-          const buton = document.createElement("button");
-          buton.textContent = "Kaydet";
-          buton.addEventListener("click", () =>
-            kaydet(c.mac, isimKutu.value.trim(), guvenKutu.checked, buton)
-          );
-          butonTd.appendChild(buton);
-          tr.appendChild(butonTd);
-
-          liste.appendChild(tr);
+        const [devicesResponse, summaryResponse] = await Promise.all([
+          fetch("/api/devices"),
+          fetch("/api/summary"),
+        ]);
+        if (!devicesResponse.ok || !summaryResponse.ok) {
+          throw new Error("HTTP " + (devicesResponse.ok ? summaryResponse.status : devicesResponse.status));
         }
+        const devices = await devicesResponse.json();
+        const summary = await summaryResponse.json();
 
-        document.getElementById("ozet").textContent =
-          `${cihazlar.length} cihaz kayıtlı, ${cevrimici} tanesi çevrimiçi, ${bilinmeyen} tanesi henüz güvenilir işaretlenmedi`;
-      } catch (hata) {
-        document.getElementById("ozet").textContent = "Veri alınamadı: " + hata;
+        // Veri değişmediyse ekranı yeniden çizme (odak ve seçim kaybolmasın)
+        const fingerprint = JSON.stringify([devices, summary]);
+        if (!force && fingerprint === state.fingerprint) return;
+
+        state.devices = devices;
+        state.summary = summary;
+        state.fingerprint = fingerprint;
+        renderCards();
+        renderDevices();
+      } catch (error) {
+        document.getElementById("summary-line").textContent = "Veri alınamadı: " + error;
       }
     }
 
-    yukle();
-    setInterval(yukle, 10000); // 10 saniyede bir yenile
+    function renderCards() {
+      const summary = state.summary;
+      const cards = document.getElementById("cards");
+      cards.replaceChildren();
+
+      // Skor kartı
+      const scoreCard = el("div", "card");
+      scoreCard.appendChild(el("div", "card-title", "Ağ güvenlik skoru"));
+      const row = el("div", "score-row");
+      row.appendChild(el("span", "score-num", String(summary.score)));
+      row.appendChild(el("span", "score-max", "/ 100"));
+      row.appendChild(el("span", "badge risk-" + ({ good: "none", ok: "low", warn: "medium", bad: "critical" })[scoreClass(summary.score)], summary.label));
+      scoreCard.appendChild(row);
+      const meter = el("div", "meter");
+      const fill = el("div", "meter-fill fill-" + scoreClass(summary.score));
+      fill.style.width = summary.score + "%";
+      meter.appendChild(fill);
+      scoreCard.appendChild(meter);
+
+      const penalties = summary.penalties.per_port;
+      const how = el("details");
+      how.appendChild(el("summary", "", "Skor nasıl hesaplanıyor?"));
+      how.appendChild(el("p", "",
+        `Skor 100'den başlar. Onaylamadığın her açık port puan düşürür (kritik −${penalties.critical}, yüksek −${penalties.high}, orta −${penalties.medium}, düşük −${penalties.low}). ` +
+        `Güvenilir işaretlemediğin her cihaz −${summary.penalties.per_untrusted_device} puan götürür (en fazla −${summary.penalties.untrusted_cap}). ` +
+        `Bir portu bilerek açık tutuyorsan yan panelden "Bunu biliyorum, normal" de; skordan düşmez.`));
+      scoreCard.appendChild(how);
+      cards.appendChild(scoreCard);
+
+      // Açık port sayıları
+      const countCard = el("div", "card");
+      countCard.appendChild(el("div", "card-title", "Onaysız açık portlar"));
+      for (const level of ["critical", "high", "medium", "low", "info"]) {
+        const countRow = el("div", "count-row");
+        countRow.appendChild(riskBadge(level));
+        countRow.appendChild(el("strong", "", String(summary.counts[level])));
+        countCard.appendChild(countRow);
+      }
+      const unknownRow = el("div", "count-row");
+      unknownRow.appendChild(el("span", "muted", "Güvenilir işaretlenmemiş cihaz"));
+      unknownRow.appendChild(el("strong", "", String(summary.untrusted_devices)));
+      countCard.appendChild(unknownRow);
+      cards.appendChild(countCard);
+
+      // Öncelikli aksiyonlar
+      const actionCard = el("div", "card");
+      actionCard.appendChild(el("div", "card-title", "Önce bunları yap"));
+      if (summary.top_actions.length === 0) {
+        actionCard.appendChild(el("p", "muted", "Acil bir aksiyon yok. Yine de Ağını Savun sekmesindeki listeye göz at."));
+      } else {
+        const list = el("ul", "action-list");
+        for (const action of summary.top_actions) {
+          const item = el("li");
+          const button = el("button", "action-btn");
+          button.appendChild(el("span", "", `${action.device_name || action.ip} · ${action.name} (${action.port})`));
+          button.appendChild(riskBadge(action.risk));
+          button.addEventListener("click", () => {
+            const device = state.devices.find((d) => d.mac === action.mac);
+            const port = device && device.ports.find((p) => p.port === action.port);
+            if (device && port) openAdvice(device, port, button);
+          });
+          item.appendChild(button);
+          list.appendChild(item);
+        }
+        actionCard.appendChild(list);
+      }
+      cards.appendChild(actionCard);
+    }
+
+    function renderDevices() {
+      const list = document.getElementById("device-list");
+      list.replaceChildren();
+
+      let online = 0;
+      let unknown = 0;
+      for (const device of state.devices) {
+        if (device.online) online++;
+        if (!device.trusted) unknown++;
+
+        const tr = el("tr", device.trusted ? "" : "unknown");
+
+        // Durum
+        const statusCell = el("td");
+        statusCell.appendChild(el("span", "badge " + (device.online ? "online" : "offline"), device.online ? "Çevrimiçi" : "Çevrimdışı"));
+        tr.appendChild(statusCell);
+
+        // İsim kutusu
+        const nameCell = el("td");
+        const nameInput = el("input");
+        nameInput.type = "text";
+        nameInput.maxLength = 50;
+        nameInput.placeholder = "İsim ver";
+        nameInput.value = device.name;
+        nameInput.setAttribute("aria-label", "Cihaz adı: " + device.ip);
+        nameInput.addEventListener("input", () => { state.editing = true; });
+        nameCell.appendChild(nameInput);
+        tr.appendChild(nameCell);
+
+        // Güvenilir onay kutusu
+        const trustCell = el("td");
+        const trustInput = el("input");
+        trustInput.type = "checkbox";
+        trustInput.checked = device.trusted;
+        trustInput.setAttribute("aria-label", "Güvenilir: " + deviceLabel(device));
+        trustInput.addEventListener("change", () => { state.editing = true; });
+        trustCell.appendChild(trustInput);
+        tr.appendChild(trustCell);
+
+        tr.appendChild(makeCell(device.ip));
+        tr.appendChild(makeCell(maskMac(device.mac)));
+        tr.appendChild(makeCell(device.vendor));
+
+        // Risk
+        const riskCell = el("td");
+        const riskEl = riskBadge(device.risk);
+        if (device.risk === "none") riskEl.title = "Taranan yaygın portlarda onaylanmamış riskli port yok";
+        riskCell.appendChild(riskEl);
+        tr.appendChild(riskCell);
+
+        // Açık port çipleri
+        const portCell = el("td");
+        if (device.ports.length === 0) {
+          portCell.appendChild(el("span", "muted", "Açık port yok"));
+        } else {
+          const chips = el("div", "chips");
+          for (const port of device.ports) {
+            const chip = el("button", "chip risk-" + port.risk + (port.accepted ? " accepted" : ""),
+              (port.accepted ? "✓ " : "") + port.port + " " + port.name);
+            chip.setAttribute("aria-label",
+              `Port ${port.port} ${port.name}, risk ${RISK_LABELS[port.risk]}${port.accepted ? ", onaylandı" : ""}. Nasıl kapatılacağını görmek için tıkla.`);
+            chip.addEventListener("click", () => openAdvice(device, port, chip));
+            chips.appendChild(chip);
+          }
+          portCell.appendChild(chips);
+        }
+        tr.appendChild(portCell);
+
+        tr.appendChild(makeCell(device.first_seen.replace("T", " ")));
+        tr.appendChild(makeCell(device.last_seen.replace("T", " ")));
+
+        // Kaydet butonu (gerçek MAC burada kullanılır, maskelenmiş değil)
+        const buttonCell = el("td");
+        const saveButton = el("button", "", "Kaydet");
+        saveButton.addEventListener("click", () =>
+          saveDevice(device.mac, nameInput.value.trim(), trustInput.checked, saveButton)
+        );
+        buttonCell.appendChild(saveButton);
+        tr.appendChild(buttonCell);
+
+        list.appendChild(tr);
+      }
+
+      document.getElementById("summary-line").textContent =
+        `${state.devices.length} cihaz kayıtlı, ${online} tanesi çevrimiçi, ${unknown} tanesi henüz güvenilir işaretlenmedi`;
+    }
+
+    // ---------- Yan panel: port tavsiyesi ----------
+    async function fetchAdvice(port) {
+      const key = port.port + ":" + port.service;
+      if (!state.adviceCache.has(key)) {
+        const response = await fetch(`/api/advice/${port.port}?service=${encodeURIComponent(port.service)}`);
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        state.adviceCache.set(key, await response.json());
+      }
+      return state.adviceCache.get(key);
+    }
+
+    async function openAdvice(device, port, opener) {
+      state.lastFocus = opener || document.activeElement;
+      const body = document.getElementById("drawer-body");
+      document.getElementById("drawer-title").textContent = `Port ${port.port} · ${port.name}`;
+      body.replaceChildren(el("p", "muted", "Yükleniyor..."));
+      showDrawer();
+
+      try {
+        const advice = await fetchAdvice(port);
+        state.drawer = { device: device, port: port, advice: advice };
+        renderDrawer();
+      } catch (error) {
+        body.replaceChildren(el("p", "", "Tavsiye alınamadı: " + error));
+      }
+    }
+
+    function showDrawer() {
+      document.getElementById("overlay").hidden = false;
+      document.getElementById("drawer").hidden = false;
+      document.body.classList.add("drawer-open");
+      document.getElementById("drawer-close").focus();
+    }
+
+    function closeDrawer() {
+      document.getElementById("overlay").hidden = true;
+      document.getElementById("drawer").hidden = true;
+      document.body.classList.remove("drawer-open");
+      state.drawer = null;
+      const target = state.lastFocus;
+      if (target && document.body.contains(target)) target.focus();
+    }
+
+    function copyText(text, button) {
+      const original = button.textContent;
+      const done = (message) => {
+        button.textContent = message;
+        setTimeout(() => { button.textContent = original; }, 1500);
+      };
+      if (!navigator.clipboard) return done("Kopyalanamadı");
+      navigator.clipboard.writeText(text).then(() => done("Kopyalandı"), () => done("Kopyalanamadı"));
+    }
+
+    // "$ " ile başlayan satırlar kopyalanabilir komut kutusu olur, diğerleri düz paragraf
+    function renderSteps(container, steps, device, port) {
+      for (const step of steps) {
+        const text = fillPlaceholders(step, device, port);
+        if (step.startsWith("$ ")) {
+          const command = text.slice(2);
+          const row = el("div", "code-row");
+          row.appendChild(el("code", "", command));
+          const copy = el("button", "", "Kopyala");
+          copy.setAttribute("aria-label", "Komutu kopyala: " + command);
+          copy.addEventListener("click", () => copyText(command, copy));
+          row.appendChild(copy);
+          container.appendChild(row);
+        } else {
+          container.appendChild(el("p", "", text));
+        }
+      }
+    }
+
+    function renderDrawer() {
+      const { device, port, advice } = state.drawer;
+      const body = document.getElementById("drawer-body");
+      body.replaceChildren();
+      document.getElementById("drawer-title").textContent = `Port ${advice.port} · ${advice.name}`;
+
+      const meta = el("div", "drawer-meta");
+      meta.appendChild(riskBadge(advice.risk));
+      meta.appendChild(el("span", "", `Cihaz: ${deviceLabel(device)} (${device.ip})`));
+      body.appendChild(meta);
+
+      body.appendChild(el("h3", "", "Bu nedir?"));
+      body.appendChild(el("p", "", advice.what));
+
+      const risky = advice.risk === "critical" || advice.risk === "high" || advice.risk === "medium";
+      body.appendChild(el("h3", "", risky ? "Neden riskli?" : "Bilmen gereken"));
+      body.appendChild(el("p", "", advice.why));
+
+      body.appendChild(el("h3", "", "Nasıl kapatırım / güvene alırım?"));
+      for (const group of advice.fix) {
+        const details = el("details", "fix-group");
+        details.open = true;
+        details.appendChild(el("summary", "", group.where));
+        renderSteps(details, group.steps, device, advice.port);
+        body.appendChild(details);
+      }
+
+      body.appendChild(el("h3", "", "Kapandığını nasıl doğrularım?"));
+      renderSteps(body, advice.verify, device, advice.port);
+
+      // "Biliyorum, normal" kutusu
+      const acceptBox = el("div", "accept-box");
+      const note = el("p", "");
+      const button = el("button", "");
+      const refresh = () => {
+        button.textContent = port.accepted ? "Onayı kaldır" : "Bunu biliyorum, bu cihazda normal";
+        note.textContent = port.accepted
+          ? "Bu port bu cihaz için onaylandı: skora ve öncelik listesine dahil edilmiyor."
+          : "Bu portu bilerek açık tutuyorsan (ör. kendi SSH sunucun) onayla. Skorundan düşmez ve öncelik listesinden çıkar. Dilediğin zaman geri alabilirsin.";
+      };
+      refresh();
+      button.addEventListener("click", () => setAccepted(!port.accepted, button, refresh));
+      acceptBox.appendChild(note);
+      acceptBox.appendChild(button);
+      body.appendChild(acceptBox);
+    }
+
+    async function setAccepted(accepted, button, refresh) {
+      const { device, port } = state.drawer;
+      button.disabled = true;
+      try {
+        const response = await fetch(
+          `/api/devices/${encodeURIComponent(device.mac)}/ports/${port.port}/accept`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accepted: accepted }),
+          }
+        );
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        port.accepted = accepted;
+        refresh();
+        await loadData(true);
+      } catch (error) {
+        button.textContent = "Hata! Tekrar dene";
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    // Tab tuşu yan paneldeki öğeler arasında döner (odak panelin dışına kaçmasın)
+    function trapFocus(event) {
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        document.querySelectorAll("#drawer button, #drawer summary, #drawer a[href]")
+      ).filter((node) => !node.disabled);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    // ---------- Ağını Savun sekmesi ----------
+    function loadChecked() {
+      try {
+        return JSON.parse(localStorage.getItem(CHECKLIST_KEY)) || {};
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function saveChecked(checked) {
+      try {
+        localStorage.setItem(CHECKLIST_KEY, JSON.stringify(checked));
+      } catch (error) {
+        // Tarayıcı depolamayı engelliyorsa liste çalışır ama ilerleme kaydedilmez
+      }
+    }
+
+    function renderGuide() {
+      const guide = state.guide;
+      const checked = loadChecked();
+      const root = document.getElementById("guide-content");
+      root.replaceChildren();
+
+      const allItems = guide.checklist.flatMap((group) => group.items);
+      const progressText = el("strong");
+      const meter = el("div", "meter");
+      const fill = el("div", "meter-fill fill-good");
+      meter.appendChild(fill);
+      const progress = el("div", "progress-line");
+      progress.appendChild(progressText);
+      progress.appendChild(meter);
+      root.appendChild(progress);
+
+      const updateProgress = () => {
+        const done = allItems.filter((item) => checked[item.id]).length;
+        progressText.textContent = `${done} / ${allItems.length} tamamlandı`;
+        fill.style.width = Math.round((done / allItems.length) * 100) + "%";
+      };
+
+      for (const group of guide.checklist) {
+        const section = el("div", "group");
+        section.appendChild(el("h2", "", group.title));
+        const list = el("ul", "check-list");
+        for (const item of group.items) {
+          const li = el("li", "check-item" + (checked[item.id] ? " done" : ""));
+          const label = el("label");
+          const box = el("input");
+          box.type = "checkbox";
+          box.checked = Boolean(checked[item.id]);
+          box.addEventListener("change", () => {
+            checked[item.id] = box.checked;
+            li.classList.toggle("done", box.checked);
+            saveChecked(checked);
+            updateProgress();
+          });
+          label.appendChild(box);
+          label.appendChild(el("span", "", item.text));
+          li.appendChild(label);
+
+          const details = el("details");
+          details.appendChild(el("summary", "", "Nasıl yapılır?"));
+          details.appendChild(el("p", "", item.detail));
+          li.appendChild(details);
+          list.appendChild(li);
+        }
+        section.appendChild(list);
+        root.appendChild(section);
+      }
+
+      const playbook = guide.unknown_device_playbook;
+      const playbookBox = el("div", "playbook");
+      playbookBox.appendChild(el("h2", "", playbook.title));
+      playbookBox.appendChild(el("p", "muted", playbook.intro));
+      const steps = el("ol");
+      for (const step of playbook.steps) {
+        const li = el("li");
+        li.appendChild(el("strong", "", step.title));
+        li.appendChild(el("span", "", step.text));
+        steps.appendChild(li);
+      }
+      playbookBox.appendChild(steps);
+      root.appendChild(playbookBox);
+
+      updateProgress();
+    }
+
+    async function loadGuide() {
+      if (state.guide) return;
+      try {
+        const response = await fetch("/api/defense-guide");
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        state.guide = await response.json();
+        renderGuide();
+      } catch (error) {
+        document.getElementById("guide-content").textContent = "Rehber alınamadı: " + error;
+      }
+    }
+
+    // ---------- Sekmeler ----------
+    function showTab(name) {
+      for (const tab of document.querySelectorAll(".tab")) {
+        const active = tab.dataset.tab === name;
+        tab.setAttribute("aria-selected", String(active));
+        tab.tabIndex = active ? 0 : -1;
+        document.getElementById("panel-" + tab.dataset.tab).hidden = !active;
+      }
+      if (name === "guide") loadGuide();
+    }
+
+    for (const tab of document.querySelectorAll(".tab")) {
+      tab.addEventListener("click", () => showTab(tab.dataset.tab));
+      tab.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        const tabs = Array.from(document.querySelectorAll(".tab"));
+        const next = tabs[(tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+        showTab(next.dataset.tab);
+        next.focus();
+      });
+    }
+
+    document.getElementById("drawer-close").addEventListener("click", closeDrawer);
+    document.getElementById("overlay").addEventListener("click", closeDrawer);
+    document.addEventListener("keydown", (event) => {
+      if (document.getElementById("drawer").hidden) return;
+      if (event.key === "Escape") closeDrawer();
+      else trapFocus(event);
+    });
+
+    loadData(true);
+    setInterval(() => loadData(false), 10000); // 10 saniyede bir yenile
   </script>
 </body>
 </html>

@@ -39,6 +39,15 @@ def create_tables():
             )
         """)
 
+        # Kullanıcının "bu portu biliyorum, bu cihazda normal" dediği portlar
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS accepted_ports (
+                mac  TEXT,
+                port INTEGER,
+                PRIMARY KEY (mac, port)
+            )
+        """)
+
 
 def save_device(device):
     """Cihaz yeniyse True, daha önce görülmüşse False döner."""
@@ -107,6 +116,35 @@ def save_ports(mac, open_ports):
             conn.execute("DELETE FROM ports WHERE mac = ? AND port = ?", (mac, port))
 
     return new_ports
+
+
+def set_port_accepted(mac, port, accepted):
+    """Portu 'bilinen/normal' olarak işaretler ya da işareti kaldırır.
+    Cihaz veritabanında yoksa False döner."""
+    with get_connection() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM devices WHERE mac = ?", (mac,)
+        ).fetchone()
+        if not exists:
+            return False
+
+        if accepted:
+            conn.execute(
+                "INSERT OR IGNORE INTO accepted_ports (mac, port) VALUES (?, ?)",
+                (mac, port),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM accepted_ports WHERE mac = ? AND port = ?", (mac, port)
+            )
+    return True
+
+
+def get_accepted_ports():
+    """{(mac, port), ...} kümesini döner."""
+    with get_connection() as conn:
+        rows = conn.execute("SELECT mac, port FROM accepted_ports").fetchall()
+    return {(mac, port) for mac, port in rows}
 
 
 def get_all_ports():
