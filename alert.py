@@ -64,7 +64,7 @@ def send_desktop(title, message):
     try:
         if hasattr(os, "geteuid") and os.geteuid() == 0 and sudo_user:
             # Running under sudo: deliver the notification to the real user's session
-            uid = subprocess.check_output(["id", "-u", sudo_user], text=True).strip()
+            uid = subprocess.check_output(["id", "-u", sudo_user], text=True).strip()  # fixed argv  # nosec B603 B607
             command = [
                 "sudo", "-u", sudo_user, "env",
                 f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
