@@ -1,221 +1,156 @@
 # Home Network Monitor
 
-A lightweight tool that scans your local network, remembers every device it sees, checks each device for open ports, alerts you when something new appears, and shows everything in a live web dashboard where you can name devices and mark them as trusted.
+[![CI](https://github.com/fas0ftware/network-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/fas0ftware/network-monitor/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-yellow)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-Built with Python, Scapy, SQLite, Flask and vanilla JavaScript.
+A lightweight tool that scans your home network, remembers every device it sees, checks each one for open ports, **alerts you on your desktop or phone** when something new appears, and shows it all in a live dashboard with an **activity timeline**.
 
-![Dashboard screenshot](docs/dashboard.png)
+Built with Python, Scapy, SQLite, Flask and vanilla JavaScript – no build step, no cloud, data stays on your machine.
+
+![Dashboard (demo data, MACs masked)](docs/dashboard.png)
 
 ## Why this project
 
-Most people have no idea what is connected to their home Wi-Fi. This tool answers a few simple questions:
+Most people have no idea what is connected to their Wi-Fi. This tool answers:
 
-- Which devices are on my network right now?
-- When did each device first and last appear?
-- Did something new just connect?
-- Did a device suddenly open a new (possibly risky) port?
+- Which devices are on my network right now, and which of them do I actually trust?
+- Did something new just connect? Did a device change its IP or come back after days?
+- Did a device suddenly open a new, possibly risky port (Telnet, SMB, RDP, VNC…)?
 
 ## Features
 
-- **ARP network scan** – discovers devices on a subnet using Scapy. Several scan passes are merged so sleeping devices are less likely to be missed.
-- **Vendor lookup** – identifies the manufacturer from the MAC address (TP-Link, Samsung, etc.) using Scapy's built-in manufacturer database.
-- **Persistent device inventory** – every device is stored in SQLite with its first-seen and last-seen timestamps. The MAC address is the primary key, because IP addresses change.
-- **New-device alerts** – prints a terminal alert and sends a desktop notification when an unknown MAC appears. The first run is silent so your existing devices are not reported as intruders.
-- **Port scanning** – each device is checked for a list of common TCP ports (SSH, HTTP, SMB, RDP, VNC, printers, …). Ports are rescanned at most every 30 minutes per device.
-- **New-port alerts** – when a device opens a port that was not open before, you get an alert. Risky services (FTP, Telnet, SMB, RDP, VNC) are flagged as `riskli!`. Closed ports are removed from the database.
-- **Device naming and trust** – give each device a friendly name and mark it as trusted from the dashboard. Untrusted devices are highlighted with an orange bar.
-- **Continuous monitoring** – rescans on a fixed interval (default: 60 seconds).
-- **Web dashboard** – live table with online/offline status and open ports (risky ones in red), auto-refreshing every 10 seconds. Auto-refresh pauses while you are editing a row.
-- **Demo mode** – open the dashboard with `?demo=1` to mask the last half of MAC addresses (handy for screenshots).
-- **Command-line options** – choose the subnet and scan interval when you start the scanner, no code editing needed.
-- **Robust storage** – SQLite runs in WAL mode so the dashboard can read while the scanner writes, connections are always closed, and a failed write is rolled back.
-- **Automatic database migration** – older databases get the new `name` / `trusted` columns and `ports` table added on startup.
-- **Tested** – automated tests cover the database, the API, the port scanner and input validation (no root or network needed).
+**Discovery & inventory**
+- **ARP scan** with Scapy; several passes are merged so sleeping devices are less likely to be missed.
+- **Vendor lookup** from the MAC prefix; **randomized private MACs** (phones' per-network addresses) are recognised and labelled.
+- **Persistent inventory** in SQLite keyed by MAC, with first/last seen, friendly name and trusted flag.
+
+**Exposure checks**
+- **Port scan** of 19 common TCP ports per device (rescanned at most every 30 min), risky services in red.
+
+**Alerts**
+- New device, new open port – in the terminal, as a **desktop notification**, and optionally as a **phone push** via [ntfy](https://ntfy.sh) or a **Discord / Slack / Mattermost webhook**.
+- The first run is silent (your existing devices become the baseline); port alerts start after a device's baseline scan.
+
+**Dashboard**
+- Summary cards (devices, online, not trusted, risky ports), search, quick filters.
+- **Activity timeline:** new devices, IP changes, devices back online after a while, ports opened/closed, devices removed.
+- Name / trust / **forget** a device, **CSV export**, MAC masking for screenshots (`?mask=1`).
+
+**Security hardening (v2)**
+- Listens on `127.0.0.1` by default. Serving on the LAN **requires a token** (16+ characters), exchanged once for an `HttpOnly`, `SameSite=Strict` cookie.
+- **DNS-rebinding protection** (trusted `Host` headers) and **CSRF protection** (cross-origin writes refused).
+- Strict **Content-Security-Policy** (no inline script), `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, `no-store` on API responses, 16 KB request limit.
+- Untrusted text is rendered with `textContent` only; CSV export is protected against spreadsheet formula injection.
+- Parameterized SQL everywhere; notification commands are argument lists (no shell) and use `--` so a vendor name can never become an option.
+
+<p align="center"><img src="docs/filter-risky.png" alt="Risky ports filter" width="100%"></p>
 
 ## How it works
 
 ```
  scanner.py ─┐
  (ARP scan)  │
-             ├──► main.py ──► db.py ──► devices.db
- portscan.py ┘   (loop +     (SQLite)       ▲
- (TCP ports)      alerts)                   │
-                     │                      │
-                  alert.py               app.py ──► templates/index.html
-               (notify-send)          (Flask API)     (dashboard UI)
+             ├──► main.py ──► db.py ──► devices.db (devices, ports, events)
+ portscan.py ┘   (loop +     (SQLite)        ▲
+ (TCP ports)      alerts)                    │
+                     │                       │
+                  alert.py                app.py ──► templates/ + static/
+        (desktop, ntfy, webhooks)     (Flask API)      (dashboard)
 ```
 
-1. `scanner.py` broadcasts ARP requests and collects the IP/MAC replies.
-2. `main.py` runs the scan in a loop and passes each device to `db.py`.
-3. `db.py` inserts unseen MACs, updates known ones, and reports whether a device is new.
-4. `portscan.py` checks the device's common ports in parallel; `db.py` stores them and reports newly opened ones.
-5. New devices and new ports trigger `alert.py`.
-6. `app.py` reads the same database and serves it as JSON to the dashboard, and saves names / trust flags sent from the dashboard.
-
-A device is shown as **online** if it was seen within the last 3 minutes.
-
-Port alerts need a baseline: the first port scan of a device in each run of `main.py` is only recorded, alerts are sent from the second scan on.
-
-## Project structure
-
-```
-network-monitor/
-├── scanner.py            # ARP scan + MAC vendor lookup
-├── portscan.py           # Threaded TCP port scan of common ports, risky port list
-├── db.py                 # SQLite storage, migrations, new-device / new-port detection
-├── alert.py              # Terminal and desktop notifications
-├── config.py             # Default settings and subnet validation
-├── main.py               # Continuous scan loop (command-line entry point)
-├── app.py                # Flask web server and JSON API
-├── templates/
-│   └── index.html        # Dashboard page
-├── tests/                # Automated tests (unittest)
-├── .github/workflows/
-│   └── tests.yml         # Runs the tests on every push
-├── docs/
-│   └── dashboard.png
-├── requirements.txt
-└── README.md
-```
-
-## Requirements
-
-- Linux
-- Python 3.10+
-- Root privileges (Scapy needs them to send raw ARP packets)
-- `notify-send` for desktop notifications (optional)
+A device counts as **online** if it was seen in the last 3 minutes.
 
 ## Installation
+
+Requirements: Linux, Python 3.10+, root for the scanner (raw ARP packets), optionally `notify-send` (`libnotify`).
 
 ```bash
 git clone https://github.com/fas0ftware/network-monitor.git
 cd network-monitor
-
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-For desktop notifications, install `libnotify`:
-
-```bash
-# Debian / Ubuntu / Mint
-sudo apt install libnotify-bin
-
-# Fedora
-sudo dnf install libnotify
-
-# Arch / Manjaro
-sudo pacman -S libnotify
-```
-
-## Configuration
-
-Find your subnet with `ip -4 -brief a`. An address like `192.168.1.23/24` means your range is `192.168.1.0/24`.
-
-Pass your subnet on the command line, or set it once with an environment variable:
-
-```bash
-sudo venv/bin/python main.py --range 192.168.0.0/24 --interval 60
-# or
-export NETMON_IP_RANGE=192.168.0.0/24
-```
-
-The range is validated: a host address such as `192.168.1.6/24` is turned into `192.168.1.0/24`, and IPv6 or very large networks (bigger than `/20`) are refused.
-
-Other settings live in the code:
-
-| Setting | File | Default |
-| ------- | ---- | ------- |
-| `DEFAULT_IP_RANGE` | `config.py` | `192.168.1.0/24` |
-| `SCAN_INTERVAL` (seconds between network scans) | `config.py` | `60` |
-| `PORT_RESCAN_INTERVAL` (minimum seconds between port scans of one device) | `config.py` | `30 * 60` |
-| `RISKY_PORTS` (flagged in alerts and shown in red) | `portscan.py` | `{21, 23, 445, 3389, 5900}` |
-| `COMMON_PORTS` (ports that are checked) | `portscan.py` | 19 common ports |
-
-The database file is `devices.db` in the folder you start the program from; set `NETMON_DB` to use another path (both `main.py` and `app.py` read it).
-
 ## Usage
 
-Run the scanner (needs root, so call the virtual environment's Python explicitly; without root it stops with a clear message):
+Try the dashboard without scanning anything:
 
 ```bash
-sudo venv/bin/python main.py
+python app.py --demo          # throw-away database with sample devices
 ```
 
-In a second terminal, start the dashboard (no root needed):
+Real use – the scanner in one terminal, the dashboard in another:
 
 ```bash
-source venv/bin/activate
-python app.py
+sudo venv/bin/python main.py --range 192.168.1.0/24 --interval 60
+python app.py                 # http://127.0.0.1:5000
 ```
 
-Open [http://127.0.0.1:5000](http://127.0.0.1:5000). Type a name, tick **Güvenilir** (trusted) and press **Kaydet** (save) to label a device.
+Find your subnet with `ip -4 -brief a` (`192.168.1.23/24` → `192.168.1.0/24`). Ranges larger than `/20` and IPv6 are refused. `main.py --once` scans a single round.
 
-On the first run the database is empty, so the first scan is silent and registers your current devices as known. From then on, any new MAC address triggers an alert.
+### Configuration (`.env` / environment)
 
-> The dashboard UI is in Turkish; the code and API are language-neutral.
+| Variable | Default | Meaning |
+|---|---|---|
+| `NETMON_IP_RANGE` | `192.168.1.0/24` | Subnet to scan |
+| `NETMON_DB` | `devices.db` | SQLite file (read by both programs) |
+| `NETMON_NTFY_URL` | – | e.g. `https://ntfy.sh/<long-random-topic>` for phone push |
+| `NETMON_WEBHOOK_URL` | – | Discord / Slack / Mattermost incoming webhook |
+| `NETMON_HOST` / `NETMON_PORT` | `127.0.0.1` / `5000` | Dashboard address |
+| `NETMON_TOKEN` | – | Required (16+ chars) when `NETMON_HOST` is not loopback |
+
+To open the dashboard on your phone: set `NETMON_HOST=0.0.0.0` and a token (`python -c "import secrets; print(secrets.token_urlsafe(24))"`), then visit `http://<pc-ip>:5000/?token=<token>` once.
 
 ### API
 
 | Method | Endpoint | Description |
-| ------ | -------- | ----------- |
-| `GET`  | `/api/devices` | All devices with `mac`, `ip`, `vendor`, `first_seen`, `last_seen`, `online`, `name`, `trusted` and open `ports` (each with `port`, `service` and `risky`) |
-| `POST` | `/api/devices/<mac>` | Body `{"name": "Laptop", "trusted": true}` – sets the name (trimmed, max 50 chars) and trust flag |
+|---|---|---|
+| `GET` | `/api/devices` | All devices with status, name, trust flag and open ports (`risky` flag each) |
+| `POST` | `/api/devices/<mac>` | `{"name": "Laptop", "trusted": true}` |
+| `DELETE` | `/api/devices/<mac>` | Forget a device (it is reported as new if it returns) |
+| `GET` | `/api/events?limit=100&mac=…` | Activity log, newest first |
+| `GET` | `/api/devices.csv` | Inventory as CSV |
+| `GET` | `/api/health` | `{"ok": true, "version": …}` |
 
-The `POST` endpoint answers `400` for a malformed MAC address, a body that is not JSON, or values of the wrong type (`trusted` must be `true` or `false`, not a string), and `404` for a device that is not in the database.
+## Tests
 
-### Running the tests
-
-```bash
-python -m unittest discover -v
-```
-
-The tests use a temporary database and local sockets only. They need neither root nor Scapy. The same command runs on every push through GitHub Actions.
-
-### Testing the alert manually
-
-Stop the scanner, delete one device from the database, and start it again:
+65 tests (plus subtests) – database and migrations, event log, API, security headers, DNS-rebinding and CSRF guards, token flow, CSV injection guard, port scanner on local sockets, alerts and webhooks (mocked), the scan loop with fake network data, demo data. No root, no network.
 
 ```bash
-sudo venv/bin/python -c "import sqlite3; c=sqlite3.connect('devices.db'); c.execute(\"DELETE FROM devices WHERE ip='192.168.1.X'\"); c.commit()"
-sudo venv/bin/python main.py
+pip install -r requirements-dev.txt
+python -m pytest -v
 ```
 
-Replace `192.168.1.X` with the device's IP. It will be detected as new.
+![Test results](docs/test-results.svg)
 
-## Security notes
+## Security scan
 
-- **Scan only networks you own or are authorized to test.** Scanning other people's networks, including port scans, may be illegal.
-- The dashboard binds to `127.0.0.1`, so it is only reachable from the machine running it, not from other devices on the network.
-- SQL queries are parameterized (`?` placeholders), which prevents SQL injection.
-- The dashboard writes data into the page with `textContent` instead of `innerHTML`, so a malicious device name cannot inject script into the page.
-- Device names are trimmed and limited to 50 characters on the server, and the API checks the type of every field.
-- The update endpoint only accepts `application/json`, so a web page you happen to visit cannot change device names or trust flags in the background.
-- `devices.db` (including its `-wal` / `-shm` files) and `.env` are listed in `.gitignore`, so your device inventory and future secrets are never committed.
+CI runs [bandit](https://github.com/PyCQA/bandit) and [pip-audit](https://github.com/pypa/pip-audit) on every push. Latest local scan, including a secret scan of the full git history:
+
+![Security scan](docs/security-scan.svg)
+
+**Scan only networks you own or are authorized to test.** Port scanning other people's networks may be illegal.
 
 ## Known limitations
 
-- **Randomized MAC addresses.** Modern phones use a different private MAC per network, so their vendor shows as "Bilinmiyor" (unknown). The same phone may also appear as a new device if it rotates its address.
-- **Sleeping devices.** Some phones and TVs ignore ARP requests in power-saving mode, so they can briefly appear offline.
-- **Client isolation.** If your router has AP/client isolation enabled, devices cannot see each other and the scan will find little.
-- **Port scan scope.** Only a fixed list of common TCP ports is checked; UDP is not scanned.
-- **Trust does not silence alerts yet.** New-device alerts fire for every unknown MAC; the trusted flag is currently informational.
-- **Linux only.** The notification code relies on `notify-send` and `/run/user/<uid>/bus`.
+- **Randomized MACs:** a phone may appear as a new device when it rotates its private address (it is labelled as such).
+- **Sleeping devices** can briefly show as offline; **client isolation** on the router hides devices from each other.
+- Only a fixed list of common **TCP** ports is checked; UDP is not scanned.
+- Desktop notifications are Linux-only (`notify-send`); push webhooks work everywhere.
+
+## Changelog
+
+- **2.0.0** – Activity timeline (new device, IP change, back online, port opened/closed, removed), ntfy + Discord/Slack webhooks, forget device, CSV export, summary cards, search and filters, randomized-MAC detection, `--once`, `--demo`; security hardening (token for LAN mode, DNS-rebinding and CSRF guards, CSP and security headers, request size limit, CSV formula guard); English UI; pytest suite; CI security scans.
+- **1.0.0** – ARP inventory, port checks, desktop alerts, dashboard with names and trust flags.
 
 ## Roadmap
 
-- [x] Name devices and mark them as trusted
-- [x] Port scanning for basic exposure checks
-- [x] Show open ports in the dashboard
-- [x] Automated tests and CI
-- [ ] Use the trusted flag to filter alerts
-- [ ] Telegram notifications (token stored in `.env`)
-- [ ] Better handling of randomized MAC addresses
-- [ ] Device history and online/offline timeline
-- [ ] Docker setup
+- [ ] Docker image
+- [ ] Use the trusted flag to mute port alerts for chosen devices
+- [ ] Per-device history chart
 
-## Tech stack
+---
 
-Python · Scapy · SQLite · Flask · JavaScript · HTML/CSS
-
+Python · Scapy · SQLite · Flask · JavaScript · HTML/CSS — Part of the **FA Software** projects. Licensed under the [MIT License](LICENSE).

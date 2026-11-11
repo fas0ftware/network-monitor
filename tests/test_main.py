@@ -39,7 +39,7 @@ class RunRoundTests(TempDatabaseTestCase):
     def test_new_device_triggers_alert(self):
         main.run_round(IP_RANGE, silent=False)
         self.assertEqual(len(self.alerts), 1)
-        self.assertIn("yeni cihaz", self.alerts[0][0])
+        self.assertIn("New device", self.alerts[0][0])
 
     def test_known_device_does_not_alert_again(self):
         main.run_round(IP_RANGE, silent=False)
@@ -57,7 +57,7 @@ class RunRoundTests(TempDatabaseTestCase):
 
         self.assertEqual(len(self.alerts), 1)
         self.assertIn("23/telnet", self.alerts[0][1])
-        self.assertIn("riskli", self.alerts[0][1])
+        self.assertIn("risky", self.alerts[0][1])
 
     def test_ports_not_rescanned_before_interval(self):
         main.run_round(IP_RANGE, silent=True)

@@ -26,7 +26,7 @@ class ApiTests(TempDatabaseTestCase):
     def test_dashboard_page_loads(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Açık portlar".encode(), response.data)
+        self.assertIn(b"Open ports", response.data)
 
     def test_devices_list_with_online_flag(self):
         self.add_device("aa:aa:aa:aa:aa:aa")

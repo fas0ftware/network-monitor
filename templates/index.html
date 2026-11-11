@@ -1,160 +1,63 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ev Ağı İzleme Paneli</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #12151c; color: #e6e9ef; margin: 0; padding: 24px; }
-    h1 { margin: 0 0 4px; }
-    #ozet { color: #8b93a7; margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; background: #1b202b; border-radius: 8px; overflow: hidden; }
-    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #272d3b; }
-    th { background: #222838; font-size: 13px; color: #8b93a7; text-transform: uppercase; }
-    .durum { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
-    .online { background: #12351f; color: #4ade80; }
-    .offline { background: #3a1a1a; color: #f87171; }
-    /* Güvenilir işaretlenmemiş cihazların satırı solda turuncu çizgiyle ayrılır */
-    tr.bilinmeyen td:first-child { border-left: 3px solid #fbbf24; }
-    input[type="text"] { background: #12151c; color: #e6e9ef; border: 1px solid #272d3b; border-radius: 6px; padding: 5px 8px; width: 150px; }
-    button { background: #2b3550; color: #e6e9ef; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-    button:hover { background: #38446a; }
-    /* Açık portlar: riskli servisler (FTP, Telnet, SMB, RDP, VNC) kırmızı */
-    .port { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #222838; color: #c3c9d8; }
-    .port.riskli { background: #3a1a1a; color: #f87171; }
-  </style>
+  <title>Home Network Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <h1>Ev Ağı İzleme Paneli</h1>
-  <div id="ozet">Yükleniyor...</div>
+  <header>
+    <div>
+      <h1>Home Network Monitor</h1>
+      <div id="summary" class="muted">Loading…</div>
+    </div>
+    <div class="actions">
+      <a class="button" href="/api/devices.csv" download>Export CSV</a>
+      <label class="muted"><input type="checkbox" id="mask"> Mask MACs</label>
+    </div>
+  </header>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Durum</th><th>İsim</th><th>Güvenilir</th><th>IP</th><th>MAC</th><th>Üretici</th><th>Açık portlar</th><th>İlk görülme</th><th>Son görülme</th><th></th>
-      </tr>
-    </thead>
-    <tbody id="liste"></tbody>
-  </table>
+  {% if locked %}
+  <div class="banner">This dashboard is protected. Open it once with <code>/?token=YOUR_TOKEN</code>.</div>
+  {% endif %}
 
-  <script>
-    // Adres çubuğuna ?demo=1 eklenirse MAC adreslerinin sonu gizlenir (ekran görüntüsü için)
-    const DEMO = new URLSearchParams(location.search).has("demo");
-    function maskele(mac) {
-      return DEMO ? mac.slice(0, 8) + ":xx:xx:xx" : mac;
-    }
-    function hucre(metin) {
-      const td = document.createElement("td");
-      td.textContent = metin; // textContent: veriyi HTML olarak değil düz metin olarak yazar
-      return td;
-    }
+  <section class="cards">
+    <div class="card"><div class="label">Devices</div><div class="value" id="c-total">–</div></div>
+    <div class="card"><div class="label">Online now</div><div class="value ok" id="c-online">–</div></div>
+    <div class="card"><div class="label">Not trusted</div><div class="value warn" id="c-untrusted">–</div></div>
+    <div class="card"><div class="label">Risky ports open</div><div class="value bad" id="c-risky">–</div></div>
+  </section>
 
-    // Kullanıcı bir isim yazarken veya kutuyu değiştirirken otomatik yenileme satırı silmesin
-    let duzenleniyor = false;
+  <section class="toolbar">
+    <input type="search" id="search" placeholder="Search name, IP, MAC, vendor, port…" aria-label="Search">
+    <div class="filters" role="group" aria-label="Filter">
+      <button data-filter="all" class="active">All</button>
+      <button data-filter="online">Online</button>
+      <button data-filter="untrusted">Not trusted</button>
+      <button data-filter="risky">Risky ports</button>
+    </div>
+  </section>
 
-    async function kaydet(mac, isim, guvenilir, buton) {
-      try {
-        const yanit = await fetch("/api/devices/" + encodeURIComponent(mac), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: isim, trusted: guvenilir }),
-        });
-        if (!yanit.ok) throw new Error("HTTP " + yanit.status);
-        buton.textContent = "Kaydedildi";
-        duzenleniyor = false;
-        setTimeout(yukle, 600);
-      } catch (hata) {
-        buton.textContent = "Hata!";
-      }
-    }
+  <main class="layout">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th><th>Name</th><th>Trusted</th><th>IP</th><th>MAC</th><th>Vendor</th>
+            <th>Open ports</th><th>First seen</th><th>Last seen</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="devices"></tbody>
+      </table>
+    </div>
+    <aside>
+      <h2>Activity</h2>
+      <ol id="events" class="events"></ol>
+    </aside>
+  </main>
 
-    async function yukle() {
-      if (duzenleniyor) return;
-      try {
-        const yanit = await fetch("/api/devices");
-        const cihazlar = await yanit.json();
-        const liste = document.getElementById("liste");
-        liste.innerHTML = "";
-
-        let cevrimici = 0;
-        let bilinmeyen = 0;
-        for (const c of cihazlar) {
-          if (c.online) cevrimici++;
-          if (!c.trusted) bilinmeyen++;
-
-          const tr = document.createElement("tr");
-          if (!c.trusted) tr.className = "bilinmeyen";
-
-          // Durum
-          const durumTd = document.createElement("td");
-          const rozet = document.createElement("span");
-          rozet.className = "durum " + (c.online ? "online" : "offline");
-          rozet.textContent = c.online ? "Çevrimiçi" : "Çevrimdışı";
-          durumTd.appendChild(rozet);
-          tr.appendChild(durumTd);
-
-          // İsim kutusu
-          const isimTd = document.createElement("td");
-          const isimKutu = document.createElement("input");
-          isimKutu.type = "text";
-          isimKutu.maxLength = 50;
-          isimKutu.placeholder = "İsim ver";
-          isimKutu.value = c.name;
-          isimKutu.addEventListener("input", () => { duzenleniyor = true; });
-          isimTd.appendChild(isimKutu);
-          tr.appendChild(isimTd);
-
-          // Güvenilir onay kutusu
-          const guvenTd = document.createElement("td");
-          const guvenKutu = document.createElement("input");
-          guvenKutu.type = "checkbox";
-          guvenKutu.checked = c.trusted;
-          guvenKutu.addEventListener("change", () => { duzenleniyor = true; });
-          guvenTd.appendChild(guvenKutu);
-          tr.appendChild(guvenTd);
-
-          tr.appendChild(hucre(c.ip));
-          tr.appendChild(hucre(maskele(c.mac)));
-          tr.appendChild(hucre(c.vendor));
-
-          // Açık portlar (textContent ile yazılır, riskli olanlar kırmızı)
-          const portTd = document.createElement("td");
-          if (c.ports.length === 0) {
-            portTd.textContent = "-";
-          }
-          for (const p of c.ports) {
-            const etiket = document.createElement("span");
-            etiket.className = "port" + (p.risky ? " riskli" : "");
-            etiket.textContent = p.port + "/" + p.service;
-            portTd.appendChild(etiket);
-          }
-          tr.appendChild(portTd);
-
-          tr.appendChild(hucre(c.first_seen.replace("T", " ")));
-          tr.appendChild(hucre(c.last_seen.replace("T", " ")));
-
-          // Kaydet butonu (gerçek MAC burada kullanılır, maskelenmiş değil)
-          const butonTd = document.createElement("td");
-          const buton = document.createElement("button");
-          buton.textContent = "Kaydet";
-          buton.addEventListener("click", () =>
-            kaydet(c.mac, isimKutu.value.trim(), guvenKutu.checked, buton)
-          );
-          butonTd.appendChild(buton);
-          tr.appendChild(butonTd);
-
-          liste.appendChild(tr);
-        }
-
-        document.getElementById("ozet").textContent =
-          `${cihazlar.length} cihaz kayıtlı, ${cevrimici} tanesi çevrimiçi, ${bilinmeyen} tanesi henüz güvenilir işaretlenmedi`;
-      } catch (hata) {
-        document.getElementById("ozet").textContent = "Veri alınamadı: " + hata;
-      }
-    }
-
-    yukle();
-    setInterval(yukle, 10000); // 10 saniyede bir yenile
-  </script>
+  <footer class="muted">v{{ version }} · refreshes every 10 s · data stays on this computer</footer>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
