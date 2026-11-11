@@ -17,7 +17,7 @@ from config import DEFAULT_HOST, DEFAULT_PORT, ONLINE_TIMEOUT, __version__, env,
 from portscan import RISKY_PORTS
 
 MAC_PATTERN = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
-TOKEN_COOKIE = "netmon_token"  # nosec B105 - cookie name, not a secret
+TOKEN_COOKIE = "netmon_token"  # cookie name, not a secret  # nosec B105
 
 
 def create_app(token=None, trusted_hosts=None):

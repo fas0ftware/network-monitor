@@ -8,7 +8,7 @@ Webhooks are configured with environment variables:
 import json
 import os
 import shutil
-import subprocess  # nosec B404 - only fixed argument lists, never a shell
+import subprocess  # only fixed argument lists, never a shell  # nosec B404
 import urllib.request
 from urllib.parse import urlparse
 
@@ -27,7 +27,7 @@ def valid_webhook(url):
 def _post(url, data, content_type, headers=None):
     request = urllib.request.Request(url, data=data, method="POST",
                                      headers={"Content-Type": content_type, **(headers or {})})
-    with urllib.request.urlopen(request, timeout=WEBHOOK_TIMEOUT) as response:  # nosec B310 - scheme checked
+    with urllib.request.urlopen(request, timeout=WEBHOOK_TIMEOUT) as response:  # scheme checked  # nosec B310
         return response.status
 
 
@@ -64,7 +64,7 @@ def send_desktop(title, message):
     try:
         if hasattr(os, "geteuid") and os.geteuid() == 0 and sudo_user:
             # Running under sudo: deliver the notification to the real user's session
-            uid = subprocess.check_output(["id", "-u", sudo_user], text=True).strip()  # nosec B603 B607
+            uid = subprocess.check_output(["id", "-u", sudo_user], text=True).strip()
             command = [
                 "sudo", "-u", sudo_user, "env",
                 f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
@@ -72,7 +72,7 @@ def send_desktop(title, message):
             ]
         else:
             command = ["notify-send", "--", title, message]
-        subprocess.run(command, check=False, timeout=5)  # nosec B603 - argument list, no shell
+        subprocess.run(command, check=False, timeout=5)  # argument list, no shell  # nosec B603
     except Exception as error:
         print(f"(Desktop notification could not be sent: {error})")
 
