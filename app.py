@@ -12,9 +12,10 @@ from urllib.parse import urlencode
 
 from flask import Flask, Response, jsonify, redirect, render_template, request
 
+import advisor
 import db
+import defense_guide
 from config import DEFAULT_HOST, DEFAULT_PORT, ONLINE_TIMEOUT, __version__, env, is_loopback_host
-from portscan import RISKY_PORTS
 
 MAC_PATTERN = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 TOKEN_COOKIE = "netmon_token"  # cookie name, not a secret  # nosec B105
@@ -111,7 +112,13 @@ def create_app(token=None, trusted_hosts=None):
             mac = mac.lower()
             if not MAC_PATTERN.match(mac):
                 return jsonify({"ok": False, "error": "invalid MAC address"}), 400
-        return jsonify(db.get_events(limit, mac))
+        events = db.get_events(limit, mac)
+        for event in events:
+            if event["kind"] in (db.PORT_OPENED, db.PORT_CLOSED):
+                port = event["detail"].split("/", 1)[0]
+                if port.isdigit():
+                    event["risk"] = advisor.port_info(int(port))["risk"]
+        return jsonify(events)
 
     @app.route("/api/devices/<mac>", methods=["POST"])
     def api_update_device(mac):
@@ -141,6 +148,34 @@ def create_app(token=None, trusted_hosts=None):
             return jsonify({"ok": False, "error": "unknown device"}), 404
         return jsonify({"ok": True})
 
+    @app.route("/api/summary")
+    def api_summary():
+        return jsonify(advisor.build_summary(get_devices()))
+
+    @app.route("/api/advice/<int:port>")
+    def api_advice(port):
+        if not 1 <= port <= 65535:
+            return jsonify({"ok": False, "error": "invalid port"}), 400
+        service = request.args.get("service", "unknown")[:40]
+        return jsonify(advisor.get_advice(port, service))
+
+    @app.route("/api/defense-guide")
+    def api_defense_guide():
+        return jsonify(defense_guide.get_guide())
+
+    @app.route("/api/devices/<mac>/ports/<int:port>/accept", methods=["POST"])
+    def api_accept_port(mac, port):
+        mac = mac.lower()
+        if not MAC_PATTERN.match(mac) or not 1 <= port <= 65535:
+            return jsonify({"ok": False, "error": "invalid MAC address or port"}), 400
+        data = request.get_json(silent=True)
+        accepted = data.get("accepted") if isinstance(data, dict) else None
+        if not isinstance(accepted, bool):
+            return jsonify({"ok": False, "error": "JSON body {\"accepted\": true|false} required"}), 400
+        if not db.set_port_accepted(mac, port, accepted):
+            return jsonify({"ok": False, "error": "this device does not have that port open"}), 404
+        return jsonify({"ok": True})
+
     @app.route("/api/health")
     def api_health():
         return jsonify({"ok": True, "version": __version__})
@@ -162,11 +197,17 @@ def get_devices():
         ).fetchall()
 
     all_ports = db.get_all_ports()
+    accepted = db.get_accepted_ports()
     now = datetime.now()
     result = []
     for mac, ip, vendor, first, last, name, trusted in rows:
         online = now - datetime.fromisoformat(last) <= ONLINE_TIMEOUT
-        ports = [{**entry, "risky": entry["port"] in RISKY_PORTS} for entry in all_ports.get(mac, [])]
+        ports = []
+        for entry in all_ports.get(mac, []):
+            info = advisor.port_info(entry["port"], entry["service"])
+            ports.append({**entry, "name": info["name"], "risk": info["risk"],
+                          "risky": info["risk"] in advisor.RISKY_LEVELS,
+                          "accepted": (mac, entry["port"]) in accepted})
         result.append({
             "mac": mac, "ip": ip, "vendor": vendor, "first_seen": first, "last_seen": last,
             "online": online, "name": name or "", "trusted": bool(trusted), "ports": ports,

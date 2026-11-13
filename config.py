@@ -4,7 +4,7 @@ import ipaddress
 import os
 from datetime import timedelta
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 DEFAULT_IP_RANGE = "192.168.1.0/24"
 SCAN_INTERVAL = 60               # seconds between two network scans

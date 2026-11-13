@@ -23,39 +23,91 @@
   {% endif %}
 
   <section class="cards">
+    <div class="card score-card" id="score-card">
+      <div class="label">Security score</div>
+      <div class="value" id="c-score">–</div>
+      <div class="sub" id="c-score-label"></div>
+    </div>
     <div class="card"><div class="label">Devices</div><div class="value" id="c-total">–</div></div>
     <div class="card"><div class="label">Online now</div><div class="value ok" id="c-online">–</div></div>
     <div class="card"><div class="label">Not trusted</div><div class="value warn" id="c-untrusted">–</div></div>
     <div class="card"><div class="label">Risky ports open</div><div class="value bad" id="c-risky">–</div></div>
   </section>
 
-  <section class="toolbar">
-    <input type="search" id="search" placeholder="Search name, IP, MAC, vendor, port…" aria-label="Search">
-    <div class="filters" role="group" aria-label="Filter">
-      <button data-filter="all" class="active">All</button>
-      <button data-filter="online">Online</button>
-      <button data-filter="untrusted">Not trusted</button>
-      <button data-filter="risky">Risky ports</button>
-    </div>
+  <section class="todo" id="todo" hidden>
+    <h2>Fix these first</h2>
+    <ol id="top-actions"></ol>
   </section>
 
-  <main class="layout">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Status</th><th>Name</th><th>Trusted</th><th>IP</th><th>MAC</th><th>Vendor</th>
-            <th>Open ports</th><th>First seen</th><th>Last seen</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="devices"></tbody>
-      </table>
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-devices" aria-controls="view-devices" aria-selected="true" class="active">Devices</button>
+    <button role="tab" id="tab-defend" aria-controls="view-defend" aria-selected="false">Defend your network</button>
+  </nav>
+
+  <div id="view-devices" role="tabpanel" aria-labelledby="tab-devices">
+    <section class="toolbar">
+      <input type="search" id="search" placeholder="Search name, IP, MAC, vendor, port…" aria-label="Search">
+      <div class="filters" role="group" aria-label="Filter">
+        <button data-filter="all" class="active">All</button>
+        <button data-filter="online">Online</button>
+        <button data-filter="untrusted">Not trusted</button>
+        <button data-filter="risky">Risky ports</button>
+      </div>
+    </section>
+
+    <main class="layout">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th><th>Name</th><th>Trusted</th><th>IP</th><th>MAC</th><th>Vendor</th>
+              <th>Open ports <span class="hint">(click one)</span></th><th>First seen</th><th>Last seen</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="devices"></tbody>
+        </table>
+      </div>
+      <aside class="activity">
+        <h2>Activity</h2>
+        <ol id="events" class="events"></ol>
+      </aside>
+    </main>
+  </div>
+
+  <div id="view-defend" role="tabpanel" aria-labelledby="tab-defend" hidden>
+    <div class="defend">
+      <section>
+        <h2>Hardening checklist <span id="check-progress" class="muted"></span></h2>
+        <div id="checklist"></div>
+        <p class="muted small">Ticks are kept in this browser only.</p>
+      </section>
+      <section class="playbook">
+        <h2 id="playbook-title">Unknown device</h2>
+        <p id="playbook-intro" class="muted"></p>
+        <ol id="playbook-steps"></ol>
+      </section>
     </div>
-    <aside>
-      <h2>Activity</h2>
-      <ol id="events" class="events"></ol>
-    </aside>
-  </main>
+  </div>
+
+  <div id="drawer-backdrop" class="backdrop" hidden></div>
+  <aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title" role="dialog">
+    <button class="close" id="drawer-close" aria-label="Close">✕</button>
+    <div class="risk-badge" id="drawer-risk"></div>
+    <h2 id="drawer-title"></h2>
+    <div id="drawer-device" class="muted"></div>
+    <div class="accept-row">
+      <button id="drawer-accept"></button>
+      <span id="drawer-accept-note" class="muted small"></span>
+    </div>
+    <h3>What is it?</h3>
+    <p id="drawer-what"></p>
+    <h3>Why does it matter?</h3>
+    <p id="drawer-why"></p>
+    <h3>How to close or secure it</h3>
+    <div id="drawer-fix"></div>
+    <h3>Check that it is closed</h3>
+    <div id="drawer-verify"></div>
+  </aside>
 
   <footer class="muted">v{{ version }} · refreshes every 10 s · data stays on this computer</footer>
   <script src="{{ url_for('static', filename='app.js') }}"></script>

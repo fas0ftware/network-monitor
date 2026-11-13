@@ -20,7 +20,11 @@ DEVICES = [
     ("44:65:0d:3c:7e:18", "192.168.1.70", "Amazon Technologies Inc.", "Echo Dot", True, 4, []),
     ("5c:aa:fd:20:13:9b", "192.168.1.71", "Sonos, Inc.", "Living room speaker", True, 48 * 60, []),
     ("9a:1f:44:c2:0b:7d", "192.168.1.88", "Private (randomized MAC)", "", False, 0, [(8080, "http-alt")]),
+    ("c8:3a:6b:51:0e:42", "192.168.1.90", "Shenzhen Tv-box Co.", "TV box", False, 3, [(5555, "adb")]),
 ]
+
+# Ports the owner has acknowledged ("I know about this"): the Pi-hole's SSH is on purpose.
+ACCEPTED = [("dc:a6:32:9c:01:5e", 22)]
 
 
 def seed(now=None):
@@ -44,6 +48,8 @@ def seed(now=None):
             (12, db.NEW_DEVICE, "9a:1f:44:c2:0b:7d", "192.168.1.88", "Private (randomized MAC)"),
             (6, db.PORT_OPENED, "9a:1f:44:c2:0b:7d", "192.168.1.88", "8080/http-alt"),
         ]
+        for mac, port in ACCEPTED:
+            conn.execute("INSERT OR REPLACE INTO accepted_ports VALUES (?, ?, ?)", (mac, port, now.isoformat(timespec="seconds")))
         conn.execute("DELETE FROM events WHERE mac = ? AND kind = ?", ("9a:1f:44:c2:0b:7d", db.NEW_DEVICE))
         for ago, kind, mac, ip, detail in events:
             db._log(conn, kind, mac, ip, detail, (now - timedelta(minutes=ago)).isoformat(timespec="seconds"))

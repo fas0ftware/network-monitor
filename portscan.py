@@ -1,14 +1,14 @@
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
-# Common home-network ports; scanning all 65535 would be slow and pointless
-COMMON_PORTS = [
-    21, 22, 23, 53, 80, 139, 443, 445, 554, 1883,
-    3389, 5000, 5353, 5900, 8000, 8080, 8443, 9100, 62078,
-]
+import advisor
 
-# Risky services: FTP, Telnet, SMB, RDP, VNC (flagged in alerts and on the dashboard)
-RISKY_PORTS = {21, 23, 445, 3389, 5900}
+# Common home-network ports; scanning all 65535 would be slow and pointless.
+# Every port here has an entry in advisor.py (what it is, the risk, how to close it).
+COMMON_PORTS = sorted(advisor.ENTRIES)
+
+# High and critical ports (flagged in alerts and on the dashboard); kept here for older imports.
+RISKY_PORTS = advisor.RISKY_PORTS
 
 
 def is_port_open(ip, port, timeout=0.5):

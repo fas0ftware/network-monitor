@@ -14,7 +14,8 @@ from config import (
     normalize_ip_range,
 )
 from db import count_devices, create_tables, prune_events, save_device, save_ports
-from portscan import RISKY_PORTS, scan_ports
+from advisor import RISKY_LEVELS, port_info
+from portscan import scan_ports
 from scanner import scan
 
 # MAC -> time of the last port scan (kept while the program runs)
@@ -35,7 +36,8 @@ def scan_device_ports(device, silent):
 
     services = dict(open_ports)
     for port in new_ports:
-        risky = " (risky!)" if port in RISKY_PORTS else ""
+        info = port_info(port, services[port])
+        risky = f" (risky: {info['risk']}, {info['name']})" if info["risk"] in RISKY_LEVELS else ""
         text = f"{device['ip']} opened port {port}/{services[port]}{risky}"
         print(f"  NEW PORT: {text}")
         send_notification("New open port on your network", text)

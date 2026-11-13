@@ -86,6 +86,17 @@ def create_tables():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS events_ts ON events (ts)")
+        # Ports the owner acknowledged ("I know about this"): they stay listed but stop
+        # counting against the security score. Kept per device, so the same port on
+        # another device still counts.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS accepted_ports (
+                mac         TEXT,
+                port        INTEGER,
+                accepted_at TEXT,
+                PRIMARY KEY (mac, port)
+            )
+        """)
 
 
 def _log(conn, kind, mac, ip, detail="", ts=None):
@@ -157,6 +168,7 @@ def delete_device(mac):
         if not row:
             return False
         conn.execute("DELETE FROM ports WHERE mac = ?", (mac,))
+        conn.execute("DELETE FROM accepted_ports WHERE mac = ?", (mac,))
         conn.execute("DELETE FROM devices WHERE mac = ?", (mac,))
         _log(conn, DEVICE_REMOVED, mac, row[0], "removed from the dashboard")
         return True
@@ -213,6 +225,25 @@ def get_all_ports():
     for mac, port, service in rows:
         result.setdefault(mac, []).append({"port": port, "service": service})
     return result
+
+
+def set_port_accepted(mac, port, accepted):
+    """Acknowledge (or stop acknowledging) an open port. False if the device does not have it open."""
+    with get_connection() as conn:
+        if accepted:
+            if not conn.execute("SELECT 1 FROM ports WHERE mac = ? AND port = ?", (mac, port)).fetchone():
+                return False
+            conn.execute("INSERT OR REPLACE INTO accepted_ports (mac, port, accepted_at) VALUES (?, ?, ?)",
+                         (mac, port, now_iso()))
+        else:
+            conn.execute("DELETE FROM accepted_ports WHERE mac = ? AND port = ?", (mac, port))
+        return True
+
+
+def get_accepted_ports():
+    """{(mac, port), ...}"""
+    with get_connection() as conn:
+        return {(mac, port) for mac, port in conn.execute("SELECT mac, port FROM accepted_ports")}
 
 
 def get_events(limit=100, mac=None):
